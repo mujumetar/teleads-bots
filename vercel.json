@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "frontend/package.json", "use": "@vercel/static-build" },
+    { "src": "backend/api/index.js", "use": "@vercel/node" },
+    { "src": "python_bot/api/bot.py", "use": "@vercel/python" }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "backend/api/index.js" },
+    { "source": "/bot/(.*)", "destination": "python_bot/api/bot.py" },
+    { "source": "/(.*)", "destination": "frontend/$1" }
+  ]
+}

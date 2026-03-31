@@ -1,0 +1,10 @@
+{
+  "name": "teleads-monorepo",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../python_bot && pip install -r requirements.txt"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
