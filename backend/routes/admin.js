@@ -26,6 +26,26 @@ router.post('/link-telegram', async (req, res) => {
   }
 });
 
+// GET /api/admin/trigger-ads - Manually trigger the ad scheduler (Important for Vercel Cron Jobs)
+// Accessible via ADMIN_SECRET or Vercel CRON_SECRET for automated execution
+router.get('/trigger-ads', async (req, res) => {
+  try {
+    const adminSecret = req.headers['x-admin-secret'] || req.headers['authorization']?.split(' ')[1];
+    const isCron = req.headers['x-vercel-cron'] === '1';
+    
+    // Allow if it has the correct secret or is a verified Vercel Cron
+    if (!isCron && (!adminSecret || adminSecret !== process.env.ADMIN_SECRET)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const { processAdQueue } = require('../bot/telegramBot');
+    await processAdQueue();
+    res.json({ success: true, message: 'Ad cycle triggered successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // All subsequent admin routes require authenticate + role check
 router.use(authenticate, requireRole('admin', 'superadmin'));
 
@@ -343,15 +363,5 @@ router.post('/wallet/:userId', requireRole('superadmin'), async (req, res) => {
   }
 });
 
-// GET /api/admin/trigger-ads - Manually trigger the ad scheduler (Important for Vercel Cron Jobs)
-router.get('/trigger-ads', async (req, res) => {
-  try {
-    const { processAdQueue } = require('../bot/telegramBot');
-    await processAdQueue();
-    res.json({ success: true, message: 'Ad queue processed successfully' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
 
 module.exports = router;
