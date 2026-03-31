@@ -57,27 +57,39 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// DB Connection Middleware for Serverless
+// Database Connection Caching for Serverless
+let cachedConnection = null;
+
 app.use(async (req, res, next) => {
   if (mongoose.connection.readyState === 1) {
     return next();
   }
   
+  if (cachedConnection) {
+    return next();
+  }
+  
   if (!process.env.MONGODB_URI) {
-    return res.status(500).json({ message: 'MONGODB_URI not configured' });
+    return res.status(500).json({ message: 'MONGODB_URI is missing in Vercel settings' });
   }
 
   try {
-    await mongoose.connect(process.env.MONGODB_URI, {
+    console.log('⏳ Connecting to MongoDB...');
+    cachedConnection = await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000 // Fast fail
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 10000,
     });
-    console.log('✅ MongoDB connected via middleware');
+    console.log('✅ MongoDB connected successfully');
     next();
   } catch (err) {
-    console.error('❌ DB Middleware Error:', err.message);
-    res.status(500).json({ message: 'Database connection failed' });
+    console.error('❌ MongoDB Connection Error:', err.message);
+    res.status(500).json({ 
+      message: 'Database connection failed', 
+      error: err.message,
+      tip: 'Check your MONGODB_URI in Vercel settings and ensure Atlas Network Access is set to 0.0.0.0/0'
+    });
   }
 });
 
