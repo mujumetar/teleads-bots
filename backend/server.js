@@ -21,6 +21,8 @@ const app = express();
 // Middleware
 const allowedOrigins = [
   process.env.FRONTEND_URL,
+  'https://teleads-bots.vercel.app',
+  'https://teleads-bots-api.vercel.app',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   /\.vercel\.app$/ // Matches all Vercel subdomains
