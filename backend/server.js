@@ -17,6 +17,9 @@ const { initBot, processAdQueue } = require('./bot/telegramBot');
 
 const app = express();
 
+// Root endpoint for health check
+app.get('/', (req, res) => res.json({ message: 'TeleAds API is live!', status: 'healthy', version: '1.0.0' }));
+
 // Manual preflight handler for Vercel CORS (IMPORTANT: Must be at the very top)
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', 'https://teleads-bots.vercel.app');
