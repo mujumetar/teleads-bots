@@ -57,6 +57,30 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// DB Connection Middleware for Serverless
+app.use(async (req, res, next) => {
+  if (mongoose.connection.readyState === 1) {
+    return next();
+  }
+  
+  if (!process.env.MONGODB_URI) {
+    return res.status(500).json({ message: 'MONGODB_URI not configured' });
+  }
+
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000 // Fast fail
+    });
+    console.log('✅ MongoDB connected via middleware');
+    next();
+  } catch (err) {
+    console.error('❌ DB Middleware Error:', err.message);
+    res.status(500).json({ message: 'Database connection failed' });
+  }
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
