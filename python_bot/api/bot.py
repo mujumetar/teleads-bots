@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 # Configuration
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-BACKEND_URL = os.getenv("BACKEND_URL") # e.g. http://your-node-backend.com/api
+BACKEND_URL = os.getenv("BACKEND_URL", "https://teleads-bots-api.vercel.app/api")
 ADMIN_SECRET = os.getenv("ADMIN_SECRET") # Shared secret between Python and Node
 
 # Initialize Bot
