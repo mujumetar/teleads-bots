@@ -76,8 +76,6 @@ app.use(async (req, res, next) => {
   try {
     console.log('⏳ Connecting to MongoDB...');
     cachedConnection = await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 10000,
     });
