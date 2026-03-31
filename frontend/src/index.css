@@ -1,9 +1,81 @@
-*, *::before, *::after {
-  box-sizing: border-box;
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  
+  /* Minimalist Light Theme (SaaS Professional) */
+  --color-primary: #4f46e5; /* Indigo 600 */
+  --color-primary-hover: #4338ca; /* Indigo 700 */
+  --color-secondary: #0f172a; /* Slate 900 */
+  --color-accent: #10b981; /* Emerald 500 */
+  
+  --color-background: #ffffff;
+  --color-surface: #ffffff;
+  --color-border: #f1f5f9; /* Slate 100 */
+  --color-border-hover: #e2e8f0; /* Slate 200 */
+  
+  --color-text-main: #1e293b; /* Slate 800 */
+  --color-text-muted: #64748b; /* Slate 500 */
+
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
 }
 
-html, body, #root {
-  margin: 0;
-  padding: 0;
-  height: 100%;
+@layer base {
+  body {
+    @apply bg-background text-text-main font-sans antialiased selection:bg-indigo-100 selection:text-indigo-900;
+  }
+}
+
+@layer components {
+  /* Minimalist Professional Card */
+  .pro-card {
+    @apply bg-white border border-border rounded-2xl p-8 transition-all duration-300 
+           hover:border-border-hover hover:shadow-sm;
+  }
+
+  .pro-input {
+    @apply w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-medium text-slate-900 
+           focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all 
+           placeholder:text-slate-400 outline-none;
+  }
+
+  /* Professional Buttons */
+  .pro-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-xl 
+           font-semibold text-sm hover:bg-slate-800 active:scale-95 transition-all cursor-pointer;
+  }
+
+  .pro-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 
+           px-6 py-3 rounded-xl font-semibold text-sm hover:bg-slate-50 active:scale-95 transition-all cursor-pointer;
+  }
+
+  .pro-btn-accent {
+    @apply inline-flex items-center justify-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl 
+           font-semibold text-sm hover:bg-emerald-700 active:scale-95 transition-all cursor-pointer;
+  }
+
+  /* Clean Badges */
+  .pro-badge {
+    @apply px-2.5 py-0.5 rounded-full text-xs font-semibold leading-none;
+  }
+
+  .pro-badge-indigo { @apply pro-badge bg-indigo-50 text-indigo-700; }
+  .pro-badge-emerald { @apply pro-badge bg-emerald-50 text-emerald-700; }
+  .pro-badge-rose { @apply pro-badge bg-rose-50 text-rose-700; }
+  .pro-badge-amber { @apply pro-badge bg-amber-50 text-amber-700; }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 }

@@ -2,466 +2,346 @@ import { useState, useEffect } from 'react';
 import api from '../api/axios';
 import StatsCard from '../components/StatsCard';
 import { 
-  Users, Megaphone, Shield, DollarSign, Activity, Settings, 
-  CheckCircle, XCircle, Bot, Landmark, List, PlusCircle, AlertCircle,
-  Search, RefreshCw, Trash2, Edit3, Plus, ExternalLink
+  ShieldCheck, 
+  Users, 
+  Megaphone, 
+  Bot, 
+  Plus, 
+  Trash2, 
+  Check, 
+  X, 
+  ArrowUpRight, 
+  Activity, 
+  Settings, 
+  History,
+  FileText,
+  AlertCircle,
+  Database,
+  BarChart,
+  HardDrive
 } from 'lucide-react';
 
 export default function SuperadminDashboard() {
-  const [activeTab, setActiveTab] = useState('financials');
-  const [stats, setStats] = useState({
-    totalDeposits: 0,
-    totalWithdrawals: 0,
-    activeBots: 0,
-    pendingAds: 0,
-    pendingGroups: 0,
-    totalUsers: 0,
-    totalRevenue: 0
-  });
+  const [stats, setStats] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
+  const [bots, setBots] = useState([]);
   const [settings, setSettings] = useState([]);
   const [catRequests, setCatRequests] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [withdrawals, setWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pendingTransactions, setPendingTransactions] = useState([]);
-  
-  // New States for "More Control"
-  const [allUsers, setAllUsers] = useState([]);
-  const [allBots, setAllBots] = useState([]);
-  const [allAdPosts, setAllAdPosts] = useState([]);
-  const [searchUser, setSearchUser] = useState('');
+  const [activeTab, setActiveTab] = useState('inventory');
   const [showBotModal, setShowBotModal] = useState(false);
-  const [newBot, setNewBot] = useState({ name: '', token: '', isPrimary: false });
+  const [newBot, setNewBot] = useState({ name: '', token: '' });
 
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, []);
 
   const fetchData = async () => {
     try {
-      const [statsRes, setRes, catRes, reqRes, txRes, usersRes, botsRes, adsRes] = await Promise.all([
+      const [statsRes, groupsRes, campaignsRes, botsRes, settingsRes, catRes, withdrawalsRes] = await Promise.all([
         api.get('/admin/stats'),
-        api.get('/admin/settings'),
-        api.get('/categories'),
-        api.get('/categories/admin/requests'),
-        api.get('/admin/transactions'),
-        api.get('/admin/users'),
+        api.get('/admin/groups'),
+        api.get('/admin/campaigns'),
         api.get('/admin/bots'),
-        api.get('/admin/adposts')
+        api.get('/admin/settings'),
+        api.get('/admin/category-requests'),
+        api.get('/admin/withdrawals')
       ]);
       setStats(statsRes.data);
-      setSettings(setRes.data);
-      setCategories(catRes.data);
-      setCatRequests(reqRes.data);
-      setPendingTransactions(txRes.data.filter(t => t.status === 'pending'));
-      setAllUsers(usersRes.data);
-      setAllBots(botsRes.data);
-      setAllAdPosts(adsRes.data);
+      setGroups(groupsRes.data);
+      setCampaigns(campaignsRes.data);
+      setBots(botsRes.data);
+      setSettings(settingsRes.data);
+      setCatRequests(catRes.data);
+      setWithdrawals(withdrawalsRes.data);
     } catch (err) {
-      console.error('Error fetching admin data:', err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTransactionAction = async (id, status) => {
-    const adminNote = prompt('Enter payment reference or reason:');
-    try {
-      await api.put(`/admin/transactions/${id}/status`, { status, adminNote });
-      fetchData();
-    } catch (err) {
-      alert('Action failed');
-    }
+  const approveGroup = async (id) => {
+    try { await api.post(`/admin/groups/${id}/approve`); fetchData(); } catch (err) { alert('Approval failed'); }
   };
 
-  const updateUserRole = async (userId, newRole) => {
-    if (!window.confirm(`Change user role to ${newRole}?`)) return;
-    try {
-      await api.put(`/admin/users/${userId}/role`, { role: newRole });
-      fetchData();
-    } catch (err) {
-      alert('Role update failed');
-    }
-  };
-
-  const addWalletFunds = async (userId) => {
-    const amount = prompt('Enter amount to ADD in ₹:');
-    if (!amount || isNaN(amount)) return;
-    try {
-      await api.post(`/admin/wallet/${userId}`, { amount: parseFloat(amount) });
-      fetchData();
-      alert('Funds added successfully');
-    } catch (err) {
-      alert('Failed to add funds');
-    }
+  const updateSetting = async (key, value) => {
+    try { await api.post('/admin/settings', { key, value }); fetchData(); } catch (err) { alert('Update failed'); }
   };
 
   const createBot = async (e) => {
     e.preventDefault();
-    try {
-      await api.post('/admin/bots', newBot);
-      setShowBotModal(false);
-      setNewBot({ name: '', token: '', isPrimary: false });
-      fetchData();
-    } catch (err) {
-      alert('Failed to add bot');
-    }
+    try { await api.post('/admin/bots', newBot); setShowBotModal(false); setNewBot({ name: '', token: '' }); fetchData(); } catch (err) { alert('Bot creation failed'); }
   };
 
-  const togglePrimaryBot = async (botId, isPrimary) => {
-    try {
-      await api.put(`/admin/bots/${botId}`, { isPrimary });
-      fetchData();
-    } catch (err) {
-      alert('Failed to update bot');
-    }
-  };
-
-  const updateSetting = async (key, value) => {
-    try {
-      await api.put('/admin/settings', { key, value });
-      fetchData();
-    } catch (err) {
-      alert('Failed to update setting');
-    }
+  const approveWithdrawal = async (id) => {
+    try { await api.post(`/admin/withdrawals/${id}/approve`); fetchData(); } catch (err) { alert('Approval failed'); }
   };
 
   const approveCategory = async (id) => {
-    try {
-      await api.post(`/categories/admin/approve/${id}`);
-      fetchData();
-    } catch (err) {
-      alert('Approval failed');
-    }
+    try { await api.post(`/admin/categories/approve/${id}`); fetchData(); } catch (err) { alert('Approval failed'); }
   };
 
-  if (loading) return <div className="page-loading"><div className="spinner"></div></div>;
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin"></div>
+    </div>
+  );
 
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="space-y-10 animate-fade-in">
+      {/* Dynamic Master Header */}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1>⚙️ Master Control Center</h1>
-          <p className="page-subtitle">Granular control over users, bots, and financials</p>
+           <div className="flex items-center gap-4 mb-2">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-indigo-500/20 shadow-xl">
+                 <ShieldCheck size={32} />
+              </div>
+              <h1 className="text-4xl font-black text-slate-900 tracking-tight">Mainframe Controller</h1>
+           </div>
+           <p className="text-slate-500 text-lg font-medium">Platform wide administrative synchronization protocols</p>
         </div>
-        <button onClick={fetchData} className="btn btn--ghost">
-          <RefreshCw size={18} /> Refresh Logic
-        </button>
+        <div className="flex items-center gap-3 bg-white border border-slate-200 p-1.5 rounded-2xl shadow-sm">
+           <button onClick={() => setActiveTab('inventory')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'inventory' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}>Inventory</button>
+           <button onClick={() => setActiveTab('finance')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'finance' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}>Finance</button>
+           <button onClick={() => setActiveTab('settings')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}>Settings</button>
+        </div>
+      </header>
+
+      {/* Global Core Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatsCard icon={<Users size={24} />} label="Total Entities" value={stats?.totalUsers || 0} color="indigo" />
+        <StatsCard icon={<Megaphone size={24} />} label="Active Matrix" value={stats?.totalCampaigns || 0} color="rose" />
+        <StatsCard icon={<Activity size={24} />} label="Net Revenue" value={`₹${stats?.totalRevenue?.toFixed(2) || 0}`} color="emerald" />
+        <StatsCard icon={<Bot size={24} />} label="Operational Nodes" value={bots.length} color="amber" />
       </div>
 
-      <div className="tabs-container" style={{ overflowX: 'auto', maxWidth: '100%' }}>
-        <button className={`tab-btn ${activeTab === 'financials' ? 'active' : ''}`} onClick={() => setActiveTab('financials')}>
-          <Landmark size={18} /> Financials
-        </button>
-        <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
-          <Users size={18} /> User Management
-        </button>
-        <button className={`tab-btn ${activeTab === 'bots' ? 'active' : ''}`} onClick={() => setActiveTab('bots')}>
-          <Bot size={18} /> Bot Management
-        </button>
-        <button className={`tab-btn ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>
-          <List size={18} /> Categories
-        </button>
-        <button className={`tab-btn ${activeTab === 'activity' ? 'active' : ''}`} onClick={() => setActiveTab('activity')}>
-          <Activity size={18} /> Network Activity
-        </button>
-        <button className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
-          <Settings size={18} /> Settings
-        </button>
-      </div>
+      {activeTab === 'inventory' && (
+         <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
+            <section className="bg-white border border-slate-200 rounded-[2.5rem] p-10 shadow-sm overflow-hidden relative group">
+               <div className="absolute top-0 right-0 p-10 opacity-5 -rotate-12 group-hover:rotate-0 transition-transform duration-700">
+                  <Database size={150} />
+               </div>
+               <div className="relative z-10">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-8">Node Ingestion Audit</h2>
+                  <div className="space-y-4">
+                     {groups.filter(g => g.status === 'pending').map(group => (
+                        <div key={group._id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group/item hover:bg-white hover:border-indigo-100 transition-all">
+                           <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black">@</div>
+                              <div>
+                                 <span className="text-sm font-black text-slate-900 block">{group.username}</span>
+                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{group.niche}</span>
+                              </div>
+                           </div>
+                           <button onClick={() => approveGroup(group._id)} className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center hover:bg-indigo-600 transition-all shadow-lg active:scale-95">
+                              <Check size={18} />
+                           </button>
+                        </div>
+                     ))}
+                     {groups.filter(g => g.status === 'pending').length === 0 && (
+                        <div className="py-10 text-center text-slate-300 font-bold italic">Identity queue is at nominal capacity</div>
+                     )}
+                  </div>
+               </div>
+            </section>
 
-      {activeTab === 'financials' && (
-        <div className="dashboard-grid no-sidebar">
-          <div className="stats-grid">
-            <StatsCard label="Net Deposits" value={`₹${stats.totalDeposits}`} icon={<DollarSign size={24} />} color="green" />
-            <StatsCard label="Net Payouts" value={`₹${stats.totalWithdrawals}`} icon={<PlusCircle size={24} />} color="blue" />
-            <StatsCard label="Platform Profit" value={`₹${stats.platformProfit?.toFixed(2)}`} icon={<Activity size={24} />} color="purple" />
-          </div>
-
-          <div className="card">
-            <div className="card-header"><h2>Pending Payout Requests</h2></div>
-            <div className="card-body">
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Amount</th>
-                      <th>Details</th>
-                      <th>Date</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingTransactions.filter(t => t.type === 'withdrawal').map(tx => (
-                      <tr key={tx._id}>
-                        <td>{tx.user?.email}</td>
-                        <td className="font-bold">₹{tx.amount.toFixed(2)}</td>
-                        <td className="text-small">{tx.note}</td>
-                        <td>{new Date(tx.createdAt).toLocaleDateString()}</td>
-                        <td>
-                          <div className="action-btns">
-                            <button onClick={() => handleTransactionAction(tx._id, 'completed')} className="btn btn--primary btn--sm">Approve</button>
-                            <button onClick={() => handleTransactionAction(tx._id, 'rejected')} className="btn btn--danger btn--sm">Reject</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {pendingTransactions.filter(t => t.type === 'withdrawal').length === 0 && (
-                      <tr><td colSpan="5" className="text-center py-4">No pending withdrawals</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'users' && (
-        <div className="dashboard-grid no-sidebar">
-          <div className="card card--full">
-            <div className="card-header">
-              <h2>User Base Management</h2>
-              <div className="search-box" style={{ maxWidth: '300px', margin: 0 }}>
-                <Search size={16} />
-                <input 
-                  type="text" 
-                  placeholder="Filter by email..." 
-                  value={searchUser}
-                  onChange={(e) => setSearchUser(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="card-body">
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Email</th>
-                      <th>Role</th>
-                      <th>Wallet</th>
-                      <th>Joined</th>
-                      <th>Master Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allUsers.filter(u => u.email.toLowerCase().includes(searchUser.toLowerCase())).map(user => (
-                      <tr key={user._id}>
-                        <td>{user.email}</td>
-                        <td><span className={`badge badge--${user.role}`}>{user.role}</span></td>
-                        <td className="font-bold">₹{user.walletBalance.toFixed(2)}</td>
-                        <td>{new Date(user.createdAt).toLocaleDateString()}</td>
-                        <td>
-                          <div className="action-btns">
-                            <select 
-                              className="input--sm" 
-                              value={user.role} 
-                              onChange={(e) => updateUserRole(user._id, e.target.value)}
-                              style={{ width: 'auto', padding: '4px 8px' }}
-                            >
-                              <option value="user">User</option>
-                              <option value="admin">Admin</option>
-                              <option value="superadmin">Superadmin</option>
-                            </select>
-                            <button onClick={() => addWalletFunds(user._id)} className="btn btn--ghost btn--sm" title="Add Funds">
-                              <Plus size={14} /> ₹
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'bots' && (
-        <div className="dashboard-grid no-sidebar">
-          <div className="card">
-            <div className="card-header">
-              <h2>Active Bots</h2>
-              <button onClick={() => setShowBotModal(true)} className="btn btn--primary btn--sm"><Plus size={16}/> Add Bot</button>
-            </div>
-            <div className="card-body">
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Bot Name</th>
-                      <th>Primary</th>
-                      <th>Status</th>
-                      <th>Ads Sent</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allBots.map(bot => (
-                      <tr key={bot._id}>
-                        <td className="font-bold">{bot.name}</td>
-                        <td>
-                          <button 
-                            className={`badge ${bot.isPrimary ? 'badge--approved' : 'badge--pending'}`}
-                            onClick={() => togglePrimaryBot(bot._id, !bot.isPrimary)}
-                          >
-                            {bot.isPrimary ? 'Primary' : 'Set Primary'}
-                          </button>
-                        </td>
-                        <td><span className={`badge badge--${bot.status}`}>{bot.status}</span></td>
-                        <td>{bot.totalAdsSent || 0}</td>
-                        <td>
-                          <button onClick={async () => {
-                            if(window.confirm('Delete bot?')) {
-                              await api.delete(`/admin/bots/${bot._id}`);
-                              fetchData();
-                            }
-                          }} className="btn btn--danger btn--sm"><Trash2 size={14} /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'activity' && (
-        <div className="card card--full">
-          <div className="card-header"><h2>Global Ad Stream</h2></div>
-          <div className="card-body">
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Campaign</th>
-                    <th>Target Group</th>
-                    <th>Charged</th>
-                    <th>Publisher</th>
-                    <th>Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allAdPosts.map(post => (
-                    <tr key={post._id}>
-                      <td>{post.campaign?.name} <span className="text-muted">({post.campaign?.advertiser?.email})</span></td>
-                      <td>{post.group?.name} <span className="text-muted">({post.group?.telegramGroupUsername})</span></td>
-                      <td className="text-red">-₹{post.costCharged?.toFixed(2)}</td>
-                      <td className="text-green">+₹{post.publisherEarnings?.toFixed(2)}</td>
-                      <td>{new Date(post.sentAt || post.createdAt).toLocaleString()}</td>
-                    </tr>
+            <section className="bg-white border border-slate-200 rounded-[3rem] p-10 shadow-sm group relative overflow-hidden">
+               <div className="absolute top-0 right-0 p-10 opacity-5 -rotate-12 group-hover:rotate-0 transition-transform duration-700">
+                  <HardDrive size={150} />
+               </div>
+               <div className="relative z-10 flex items-center justify-between mb-8">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Active Matrix Nodes</h2>
+                  <button onClick={() => setShowBotModal(true)} className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">
+                     <Plus size={20} />
+                  </button>
+               </div>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {bots.map(bot => (
+                     <div key={bot._id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 group/bot hover:bg-white hover:border-indigo-100 transition-all">
+                        <div className="flex items-center gap-3 mb-4">
+                           <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+                              <Bot size={16} />
+                           </div>
+                           <span className="text-xs font-black text-slate-900 uppercase tracking-widest">{bot.name}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                           <div className="flex items-center gap-1.5">
+                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Live Channel</span>
+                           </div>
+                           <span className="text-[10px] font-bold text-slate-300">{bot._id.slice(-6)}</span>
+                        </div>
+                     </div>
                   ))}
-                  {allAdPosts.length === 0 && <tr><td colSpan="5" className="text-center py-4">No ad activity yet</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+               </div>
+            </section>
+         </div>
       )}
 
-      {activeTab === 'categories' && (
-        <div className="dashboard-grid no-sidebar">
-          <div className="card">
-            <div className="card-header"><h2>Niche Requests</h2></div>
-            <div className="card-body">
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr><th>Niche</th><th>Reason</th><th>By</th><th>Actions</th></tr>
-                  </thead>
-                  <tbody>
-                    {catRequests.filter(r => r.status === 'pending').map(req => (
-                      <tr key={req._id}>
-                        <td className="font-bold">{req.name}</td>
-                        <td className="text-small">{req.description}</td>
-                        <td>{req.requestedBy?.email}</td>
-                        <td><button className="btn btn--primary btn--sm" onClick={() => approveCategory(req._id)}>Approve</button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+      {activeTab === 'finance' && (
+         <section className="bg-white border border-slate-200 rounded-[2.5rem] p-10 shadow-sm relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-10 opacity-5 -rotate-12 group-hover:rotate-0 transition-transform duration-700">
+               <History size={150} />
             </div>
-          </div>
-        </div>
+            <div className="relative z-10">
+               <div className="flex items-center justify-between mb-10">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Liquidity Dispatch Queue</h2>
+                  <div className="px-4 py-1.5 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-widest tracking-widest">Pending Payouts</div>
+               </div>
+               <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                     <thead>
+                        <tr className="bg-slate-50/50 text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
+                           <th className="px-8 py-5">Dispatcher ID</th>
+                           <th className="px-8 py-5">Amount (₹)</th>
+                           <th className="px-8 py-5">Destination Path</th>
+                           <th className="px-8 py-5">Action</th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        {withdrawals.filter(w => w.status === 'pending').map(w => (
+                           <tr key={w._id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                              <td className="px-8 py-6 font-bold text-slate-900 text-sm italic">{w.userId?.email}</td>
+                              <td className="px-8 py-6 font-black text-xl text-slate-900">₹{w.amount.toFixed(2)}</td>
+                              <td className="px-8 py-6 font-bold text-slate-400 text-[10px] uppercase tracking-widest">{w.method}: {w.details}</td>
+                              <td className="px-8 py-6">
+                                 <button onClick={() => approveWithdrawal(w._id)} className="px-8 py-3 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg active:scale-95">Release Funds</button>
+                              </td>
+                           </tr>
+                        ))}
+                        {withdrawals.filter(w => w.status === 'pending').length === 0 && (
+                           <tr><td colSpan="4" className="text-center py-20 text-slate-300 font-bold italic tracking-widest uppercase">Liquidity grid is currently balanced</td></tr>
+                        )}
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+         </section>
       )}
 
       {activeTab === 'settings' && (
-        <div className="card card--full">
-          <div className="card-header"><h2>System & Fee Controls</h2></div>
-          <div className="card-body">
-            <div className="form-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '32px' }}>
-                <div className="form-group">
-                  <label>Credit Price (₹ INR)</label>
-                  <input 
-                    type="number" 
-                    defaultValue={settings.find(s => s.key === 'credit_price')?.value} 
-                    onBlur={(e) => updateSetting('credit_price', e.target.value)}
-                    className="input--dark"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Pub. Revenue Share (%)</label>
-                  <input 
-                    type="number" 
-                    defaultValue={settings.find(s => s.key === 'publisher_share')?.value} 
-                    onBlur={(e) => updateSetting('publisher_share', e.target.value)}
-                    className="input--dark"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Min. Deposit (₹ INR)</label>
-                  <input 
-                    type="number" 
-                    defaultValue={settings.find(s => s.key === 'min_deposit')?.value} 
-                    onBlur={(e) => updateSetting('min_deposit', e.target.value)}
-                    className="input--dark"
-                  />
-                </div>
+         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
+            <section className="xl:col-span-8 bg-white border border-slate-200 rounded-[2.5rem] p-10 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-10 opacity-5 -rotate-12 group-hover:rotate-0 transition-transform duration-700">
+                  <Settings size={150} />
+               </div>
+               <div className="relative z-10">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-8">System Logic Protocol</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                     {settings.filter(s => s.key !== 'maintenance_mode').map(s => (
+                        <div key={s.key} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 items-start">
+                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">{s.key.replace(/_/g, ' ')}</span>
+                           <input 
+                             type="number" 
+                             value={s.value} 
+                             onChange={(e) => updateSetting(s.key, e.target.value)}
+                             onBlur={(e) => updateSetting(s.key, e.target.value)}
+                             className="pro-input py-2 text-lg font-black"
+                           />
+                        </div>
+                     ))}
+                  </div>
+               </div>
+            </section>
+
+            <div className="xl:col-span-4 space-y-10">
+               <section className="bg-slate-900 rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-10 opacity-10 -rotate-12 group-hover:rotate-0 transition-transform duration-700">
+                     <AlertCircle size={100} className="text-white" />
+                  </div>
+                  <div className="relative z-10 text-white">
+                     <h2 className="text-2xl font-black tracking-tight mb-4">Platform Lock</h2>
+                     <p className="text-slate-400 text-sm font-medium mb-10 leading-relaxed">Maintenance override. Locks platform for all sub-admin nodes.</p>
+                     
+                     <div className="flex items-center justify-between p-6 bg-white/5 rounded-3xl border border-white/10">
+                        <div className="flex flex-col">
+                           <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Status</span>
+                           <span className={`text-xs font-bold ${settings.find(s => s.key === 'maintenance_mode')?.value ? 'text-rose-400' : 'text-emerald-400'}`}>
+                              {settings.find(s => s.key === 'maintenance_mode')?.value ? 'LOCKED' : 'NOMINAL'}
+                           </span>
+                        </div>
+                        <button 
+                          onClick={() => updateSetting('maintenance_mode', !settings.find(s => s.key === 'maintenance_mode')?.value)} 
+                          className={`px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
+                            settings.find(s => s.key === 'maintenance_mode')?.value 
+                            ? 'bg-rose-500 hover:bg-rose-600 shadow-xl shadow-rose-500/20' 
+                            : 'bg-emerald-500 hover:bg-emerald-600 shadow-xl shadow-emerald-500/20'
+                          }`}
+                        >
+                          {settings.find(s => s.key === 'maintenance_mode')?.value ? 'Disable' : 'Enable'}
+                        </button>
+                     </div>
+                  </div>
+               </section>
+
+               <section className="bg-white border border-slate-200 rounded-[2.5rem] p-10 shadow-sm relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-10 opacity-5 -rotate-12 group-hover:rotate-0 transition-transform duration-700">
+                     <BarChart size={100} />
+                  </div>
+                  <h2 className="relative z-10 text-2xl font-black text-slate-900 tracking-tight mb-8">Niche Requests</h2>
+                  <div className="relative z-10 space-y-4">
+                     {catRequests.filter(r => r.status === 'pending').map(req => (
+                        <div key={req._id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white hover:border-indigo-100 transition-all group/req">
+                           <div className="flex items-center justify-between mb-2">
+                              <span className="text-lg font-black text-slate-900 uppercase">{req.name}</span>
+                              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded uppercase">New</span>
+                           </div>
+                           <p className="text-xs font-bold text-slate-500 mb-4">{req.description}</p>
+                           <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black text-slate-300 truncate max-w-[100px]">{req.requestedBy?.email}</span>
+                              <button className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-emerald-600 shadow-lg transition-all" onClick={() => approveCategory(req._id)}><Check size={16} /></button>
+                           </div>
+                        </div>
+                     ))}
+                     {catRequests.filter(r => r.status === 'pending').length === 0 && (
+                        <div className="text-center text-slate-300 font-bold italic uppercase text-xs">No pending niches</div>
+                     )}
+                  </div>
+               </section>
             </div>
-            
-            <div className="divider my-8"></div>
-            
-            <div className="setting-item flex-between py-4">
-              <div>
-                <h4>Maintenance Mode</h4>
-                <p className="text-muted">Restrict access for everyone except admins.</p>
-              </div>
-              <button 
-                onClick={() => updateSetting('maintenance_mode', !settings.find(s => s.key === 'maintenance_mode')?.value)} 
-                className={`btn btn--sm ${settings.find(s => s.key === 'maintenance_mode')?.value ? 'btn--danger' : 'btn--primary'}`}
-              >
-                {settings.find(s => s.key === 'maintenance_mode')?.value ? 'Disable' : 'Enable'}
-              </button>
-            </div>
-          </div>
-        </div>
+         </div>
       )}
 
-      {/* Bot Modal */}
+      {/* Manual Bot Node Provisioning */}
       {showBotModal && (
-        <div className="modal-overlay">
-          <div className="modal-card card" style={{ maxWidth: '400px' }}>
-            <div className="card-header"><h2>Add New Bot</h2></div>
-            <div className="card-body">
-              <form onSubmit={createBot} className="auth-form">
-                <div className="form-group">
-                  <label>Bot Name</label>
-                  <input type="text" placeholder="e.g. TeleAds_Official_Bot" value={newBot.name} onChange={(e) => setNewBot({...newBot, name: e.target.value})} required className="input--dark" />
-                </div>
-                <div className="form-group">
-                  <label>Bot Token</label>
-                  <input type="password" placeholder="Telegram API Token" value={newBot.token} onChange={(e) => setNewBot({...newBot, token: e.target.value})} required className="input--dark" />
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <button type="submit" className="btn btn--primary btn--full">Add Bot</button>
-                  <button type="button" onClick={() => setShowBotModal(false)} className="btn btn--ghost btn--full">Cancel</button>
-                </div>
-              </form>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-fade-in">
+          <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-md" onClick={() => setShowBotModal(false)}></div>
+          <div className="relative bg-white rounded-[3rem] shadow-2xl p-10 max-w-lg w-full border border-slate-200 animate-slide-up">
+            <div className="flex justify-between items-center mb-10 text-slate-900">
+               <h2 className="text-3xl font-black tracking-tight">Provision Node</h2>
+               <button onClick={() => setShowBotModal(false)}><X size={24} /></button>
             </div>
+            <form onSubmit={createBot} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Internal Name</label>
+                <input 
+                  type="text" 
+                  placeholder="TELEADS_ALPHA_NODE" 
+                  value={newBot.name} 
+                  onChange={(e) => setNewBot({...newBot, name: e.target.value})} 
+                  required 
+                  className="pro-input"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Telegram Protocol Key</label>
+                <input 
+                  type="password" 
+                  placeholder="Bot API Token" 
+                  value={newBot.token} 
+                  onChange={(e) => setNewBot({...newBot, token: e.target.value})} 
+                  required 
+                  className="pro-input"
+                />
+              </div>
+              <div className="flex gap-4 pt-6">
+                <button type="submit" className="pro-btn-primary flex-1">Generate Cluster</button>
+                <button type="button" onClick={() => setShowBotModal(false)} className="pro-btn-secondary">Abort</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

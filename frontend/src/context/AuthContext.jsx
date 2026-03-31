@@ -29,10 +29,14 @@ export function AuthProvider({ children }) {
     setLoading(false);
   };
 
+  const switchRole = (role) => {
+    setActiveRole(role);
+    localStorage.setItem('activeRole', role);
+  };
+
   const toggleActiveRole = () => {
     const nextRole = activeRole === 'advertiser' ? 'publisher' : 'advertiser';
-    setActiveRole(nextRole);
-    localStorage.setItem('activeRole', nextRole);
+    switchRole(nextRole);
   };
 
   const login = async (email, password) => {
@@ -55,7 +59,16 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, activeRole, toggleActiveRole, login, register, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      activeRole, 
+      switchRole, 
+      toggleActiveRole, 
+      login, 
+      register, 
+      logout 
+    }}>
       {children}
     </AuthContext.Provider>
   );

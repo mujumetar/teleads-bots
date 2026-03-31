@@ -7,7 +7,26 @@ const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-// All admin routes require admin or superadmin
+// Public/Secret-based routes (Must be BEFORE general auth middleware)
+// POST /api/admin/link-telegram - Synchronize TG ID with User Email
+router.post('/link-telegram', async (req, res) => {
+  try {
+    const adminSecret = req.headers['x-admin-secret'];
+    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+    
+    const { email, telegramId } = req.body;
+    const user = await User.findOneAndUpdate({ email }, { telegramId }, { new: true });
+    if (!user) return res.status(404).json({ message: 'User profile not found' });
+    
+    res.json({ success: true, user: user.email });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// All subsequent admin routes require authenticate + role check
 router.use(authenticate, requireRole('admin', 'superadmin'));
 
 const Bot = require('../models/Bot');

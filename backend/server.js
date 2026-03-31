@@ -20,9 +20,22 @@ const app = express();
 // Root endpoint for health check
 app.get('/', (req, res) => res.json({ message: 'TeleAds API is live!', status: 'healthy', version: '1.0.0' }));
 
-// Manual preflight handler for Vercel CORS (IMPORTANT: Must be at the very top)
+// Allowed origins list (used by both preflight handler and cors middleware)
+const ALLOWED_ORIGINS = [
+  'https://teleads-bots.vercel.app',
+  'https://teleads-bots-api.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+];
+
+// Manual preflight handler (IMPORTANT: Must be at the very top, before all routes)
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://teleads-bots.vercel.app');
+  const origin = req.headers.origin;
+  const isAllowed = !origin || ALLOWED_ORIGINS.includes(origin) || /\.vercel\.app$/.test(origin);
+  if (isAllowed && origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.header('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, x-admin-secret, Authorization');
@@ -64,11 +77,11 @@ app.use(async (req, res, next) => {
   if (mongoose.connection.readyState === 1) {
     return next();
   }
-  
+
   if (cachedConnection) {
     return next();
   }
-  
+
   if (!process.env.MONGODB_URI) {
     return res.status(500).json({ message: 'MONGODB_URI is missing in Vercel settings' });
   }
@@ -83,8 +96,8 @@ app.use(async (req, res, next) => {
     next();
   } catch (err) {
     console.error('❌ MongoDB Connection Error:', err.message);
-    res.status(500).json({ 
-      message: 'Database connection failed', 
+    res.status(500).json({
+      message: 'Database connection failed',
       error: err.message,
       tip: 'Check your MONGODB_URI in Vercel settings and ensure Atlas Network Access is set to 0.0.0.0/0'
     });
