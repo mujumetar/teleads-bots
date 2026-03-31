@@ -16,6 +16,7 @@
     { "source": "/campaigns", "destination": "frontend/index.html" },
     { "source": "/admin", "destination": "frontend/index.html" },
     { "source": "/superadmin", "destination": "frontend/index.html" },
-    { "source": "/((?!api|bot|static).*)", "destination": "frontend/index.html" }
+    { "source": "/assets/(.*)", "destination": "frontend/$1" },
+    { "source": "/((?!api|bot|static|assets|.*\\..*).*)", "destination": "frontend/index.html" }
   ]
 }
