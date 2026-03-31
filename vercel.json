@@ -8,6 +8,14 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "backend/api/index.js" },
     { "source": "/bot/(.*)", "destination": "python_bot/api/bot.py" },
-    { "source": "/(.*)", "destination": "frontend/$1" }
+    { "source": "/login", "destination": "frontend/index.html" },
+    { "source": "/register", "destination": "frontend/index.html" },
+    { "source": "/dashboard", "destination": "frontend/index.html" },
+    { "source": "/wallet", "destination": "frontend/index.html" },
+    { "source": "/groups", "destination": "frontend/index.html" },
+    { "source": "/campaigns", "destination": "frontend/index.html" },
+    { "source": "/admin", "destination": "frontend/index.html" },
+    { "source": "/superadmin", "destination": "frontend/index.html" },
+    { "source": "/((?!api|bot|static).*)", "destination": "frontend/index.html" }
   ]
 }
