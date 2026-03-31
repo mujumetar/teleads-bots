@@ -1,125 +1,107 @@
 import { Link } from 'react-router-dom';
-import { Megaphone, Users, Shield, ArrowRight, CheckCircle, TrendingUp, Zap, Globe } from 'lucide-react';
+import { Megaphone, Users, Shield, ArrowRight, CheckCircle, TrendingUp, Zap, Globe, Bot, ChevronRight } from 'lucide-react';
 
 export default function Home() {
   return (
-    <div className="landing-page">
+    <div className="min-h-screen bg-white font-sans text-slate-900 selection:bg-indigo-50 selection:text-indigo-900">
       {/* Navigation */}
-      <nav className="landing-nav">
-        <div className="container landing-nav-inner">
-          <div className="brand">
-            <div className="brand-logo">T</div>
-            <span className="brand-text">TeleAds</span>
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center font-bold">T</div>
+            <span className="font-bold text-lg tracking-tight">TeleAds</span>
           </div>
-          <div className="nav-actions">
-            <Link to="/login" className="btn btn--ghost btn--sm">Log In</Link>
-            <Link to="/register" className="btn btn--primary btn--sm">Sign Up Free</Link>
+          <div className="flex items-center gap-6">
+            <Link to="/login" className="text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">Log in</Link>
+            <Link to="/register" className="pro-btn-primary px-5 py-2.5 !rounded-xl !shadow-none">Sign up free</Link>
           </div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <header className="hero-section">
-        <div className="container hero-content">
-          <div className="badge badge--pending" style={{ padding: '8px 16px', borderRadius: '50px', marginBottom: '24px' }}>
-            🎉 TeleAds 2.0 is now live!
-          </div>
-          <h1>The Professional Ad Network for <span>Telegram</span></h1>
-          <p>
-            Join more than 5,000+ advertisers and publishers who scale their business 
-            on the world's most innovative messaging platform. Target by niche, 
-            track performance in real-time, and get paid in ₹ INR.
-          </p>
-          <div className="hero-actions">
-            <Link to="/register" className="btn btn--primary" style={{ padding: '16px 32px', fontSize: '1.1rem' }}>
-              Start Growing Now <ArrowRight size={20} />
-            </Link>
-            <div className="hero-trust">
-              <div className="trust-item">
-                <Users size={16} /> 5,000+ Users
-              </div>
-              <div className="trust-divider"></div>
-              <div className="trust-item">
-                <Globe size={16} /> 100+ Countries
-              </div>
-            </div>
-          </div>
+      <header className="pt-40 pb-20 px-6 max-w-7xl mx-auto text-center space-y-10 animate-fade-in">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-widest">
+           <Zap size={14} className="text-amber-500" /> V2.0 Protocol is Live
         </div>
         
-        <div className="hero-preview">
-          <div className="preview-card card">
-            <div className="card-header">
-              <h2>Analytics Overview</h2>
-              <span className="badge badge--active">Live Now</span>
-            </div>
-            <div className="card-body">
-              <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '0' }}>
-                <div className="stats-card" style={{ padding: '16px', gap: '12px' }}>
-                  <div className="stats-icon stats-icon--blue" style={{ width: '40px', height: '40px' }}><TrendingUp size={20} /></div>
-                  <div className="stats-info">
-                    <span className="stats-label" style={{ fontSize: '0.7rem' }}>Impressions</span>
-                    <span className="stats-value" style={{ fontSize: '1.2rem' }}>1.2M</span>
-                  </div>
-                </div>
-                <div className="stats-card" style={{ padding: '16px', gap: '12px' }}>
-                  <div className="stats-icon stats-icon--green" style={{ width: '40px', height: '40px' }}><Zap size={20} /></div>
-                  <div className="stats-info">
-                    <span className="stats-label" style={{ fontSize: '0.7rem' }}>Ads Sent</span>
-                    <span className="stats-value" style={{ fontSize: '1.2rem' }}>850K</span>
-                  </div>
-                </div>
-                <div className="stats-card" style={{ padding: '16px', gap: '12px' }}>
-                  <div className="stats-icon stats-icon--purple" style={{ width: '40px', height: '40px' }}><Shield size={20} /></div>
-                  <div className="stats-info">
-                    <span className="stats-label" style={{ fontSize: '0.7rem' }}>Payouts</span>
-                    <span className="stats-value" style={{ fontSize: '1.2rem' }}>₹4.5M</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+        <h1 className="text-5xl md:text-7xl font-bold tracking-tight max-w-4xl mx-auto leading-[1.1]">
+          The Professional Ad Network for <span className="text-indigo-600">Telegram</span>
+        </h1>
+        
+        <p className="text-lg md:text-xl text-slate-500 font-medium max-w-2xl mx-auto leading-relaxed">
+          Scale your business on the world's most innovative messaging platform. 
+          Target by niche, track ROI in real-time, and automate your yields.
+        </p>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
+          <Link to="/register" className="pro-btn-primary w-full sm:w-auto px-10 py-5 text-base">
+            Start Growing Now
+            <ArrowRight size={20} />
+          </Link>
+          <button className="pro-btn-secondary w-full sm:w-auto px-10 py-5 text-base border-transparent hover:bg-slate-50">
+            View Analytics Matrix
+          </button>
+        </div>
+
+        <div className="flex items-center justify-center gap-10 pt-10 text-slate-300 opacity-80">
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
+            <Users size={14} /> 5K+ Partners
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
+            <Globe size={14} /> Global Reach
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
+             <Shield size={14} /> Verified Nodes
           </div>
         </div>
       </header>
 
-      {/* Features Section */}
-      <section className="features-section">
-        <div className="container">
-          <div className="section-header">
-            <span className="badge badge--completed" style={{ marginBottom: '16px' }}>Features</span>
-            <h2>Everything you need to succeed</h2>
-            <p>Built with modern scalability and professional control in mind.</p>
-          </div>
-          
-          <div className="features-grid">
-            <div className="feature-card card">
-              <div className="stats-icon stats-icon--blue"><Megaphone size={28} /></div>
-              <h3>Precision Targeting</h3>
-              <p>Target telegram channels by niche, member count, and location. Reach the users who actually care about your product.</p>
+      {/* Social Proof / Preview */}
+      <section className="px-6 py-20 bg-slate-50/50 border-y border-slate-100">
+         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="pro-card border-slate-100/50 shadow-xl shadow-slate-200/20">
+               <TrendingUp className="text-indigo-600 mb-6" size={32} />
+               <h3 className="text-xl font-bold mb-3">Precision Targeting</h3>
+               <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                 Target channels by precise niche, population size, and engagement rates. Stop wasting budget on bot traffic.
+               </p>
             </div>
-            <div className="feature-card card">
-              <div className="stats-icon stats-icon--green"><CheckCircle size={28} /></div>
-              <h3>Real-time Tracking</h3>
-              <p>Detailed attribution for every single ad post. Track clicks, impressions, and ROI with our proprietary tracking system.</p>
+            <div className="pro-card border-slate-100/50 shadow-xl shadow-slate-200/20">
+               <Zap className="text-amber-500 mb-6" size={32} />
+               <h3 className="text-xl font-bold mb-3">Automated Yields</h3>
+               <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                 Seamlessly automate ad cycles with our proprietary bot protocol. Payouts are reconciled in real-time.
+               </p>
             </div>
-            <div className="feature-card card">
-              <div className="stats-icon stats-icon--purple"><Shield size={28} /></div>
-              <h3>Verified Publishers</h3>
-              <p>All groups are manually approved by our team to ensure zero-bot traffic and high-quality human engagement.</p>
+            <div className="pro-card border-slate-100/50 shadow-xl shadow-slate-200/20">
+               <Bot className="text-emerald-500 mb-6" size={32} />
+               <h3 className="text-xl font-bold mb-3">Private Governance</h3>
+               <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                 All telemetries and confirmations are channeled privately to your PM. Maintain a clean, professional group.
+               </p>
             </div>
-          </div>
-        </div>
+         </div>
+      </section>
+
+      {/* Simplified CTA */}
+      <section className="py-32 px-6 text-center max-w-4xl mx-auto space-y-8">
+         <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Ready to integrate?</h2>
+         <p className="text-slate-500 font-medium">Join 500+ successful publishers already monetizing their Telegram assets.</p>
+         <Link to="/register" className="pro-btn-primary px-10 py-5 text-base">
+           Enroll Platform Node
+         </Link>
       </section>
 
       {/* Footer */}
-      <footer className="landing-footer">
-        <div className="container footer-inner">
-          <div className="brand">
-            <div className="brand-logo">T</div>
-            <span className="brand-text">TeleAds</span>
-          </div>
-          <div className="footer-links">
-            <span className="text-muted">© 2026 TeleAds Platform. All rights reserved.</span>
-          </div>
+      <footer className="py-12 border-t border-slate-100">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+           <div className="flex items-center gap-2 grayscale opacity-50">
+             <div className="w-6 h-6 bg-slate-900 text-white rounded flex items-center justify-center font-bold text-xs">T</div>
+             <span className="font-bold text-sm">TeleAds</span>
+           </div>
+           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+             © 2026 TeleAds Protocol. All Rights Reserved.
+           </p>
         </div>
       </footer>
     </div>
