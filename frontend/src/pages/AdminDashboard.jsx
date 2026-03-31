@@ -3,7 +3,7 @@ import api from '../api/axios';
 import StatsCard from '../components/StatsCard';
 import {
   Shield, Users, Megaphone, LayoutGrid, DollarSign,
-  CheckCircle, XCircle, Clock, Activity
+  CheckCircle, XCircle, Clock, Activity, Loader2, Zap, Search, ChevronRight
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -12,6 +12,7 @@ export default function AdminDashboard() {
   const [pendingGroups, setPendingGroups] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [triggering, setTriggering] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
@@ -31,9 +32,21 @@ export default function AdminDashboard() {
       setPendingGroups(groupsRes.data.filter(g => g.status === 'pending'));
       setUsers(usersRes.data);
     } catch (err) {
-      console.error(err);
+      console.error('Data Fetch Failure:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const triggerAds = async () => {
+    setTriggering(true);
+    try {
+      await api.get('/admin/trigger-ads');
+      alert('Network Protocol Triggered: Ad cycles have been refreshed.');
+    } catch (err) {
+      alert('Trigger Failed: Matrix sync error.');
+    } finally {
+      setTriggering(false);
     }
   };
 
@@ -55,216 +68,231 @@ export default function AdminDashboard() {
     }
   };
 
-  if (loading) return <div className="page-loading"><div className="spinner"></div></div>;
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+    </div>
+  );
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <h1><Shield size={28} /> Admin Panel</h1>
-          <p className="page-subtitle">Manage campaigns, groups, and users</p>
+    <div className="space-y-10 animate-fade-in mb-20 max-w-7xl mx-auto px-4 sm:px-6">
+      {/* Header Profile */}
+      <section className="flex flex-col md:flex-row md:items-center justify-between gap-6 py-8 border-b border-slate-100">
+        <div className="space-y-1">
+           <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
+             <Shield className="text-indigo-600" />
+             Command Center
+           </h1>
+           <p className="text-slate-500 text-sm font-medium">Global governance and node administration portal.</p>
         </div>
-      </div>
 
+        <button 
+          onClick={triggerAds}
+          disabled={triggering}
+          className="pro-btn-primary bg-indigo-600 hover:bg-indigo-700"
+        >
+          {triggering ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+          {triggering ? 'Triggering...' : 'Force Ad Cycle'}
+        </button>
+      </section>
+
+      {/* Main Stats */}
       {stats && (
-        <div className="stats-grid stats-grid--5">
-          <StatsCard icon={<Users size={24} />} label="Total Users" value={stats.totalUsers} color="blue" />
-          <StatsCard icon={<Megaphone size={24} />} label="Active Campaigns" value={stats.activeCampaigns} color="green" />
-          <StatsCard icon={<Clock size={24} />} label="Pending Approval" value={stats.pendingCampaigns + stats.pendingGroups} color="orange" />
-          <StatsCard icon={<LayoutGrid size={24} />} label="Approved Groups" value={stats.approvedGroups} color="purple" />
-          <StatsCard icon={<DollarSign size={24} />} label="Platform Revenue" value={`₹${(stats.totalRevenue || 0).toFixed(2)}`} color="green" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+          <StatsCard icon={<Users size={20} />} label="Total Entities" value={stats.totalUsers} color="indigo" />
+          <StatsCard icon={<Megaphone size={20} />} label="Live Ad Paths" value={stats.activeCampaigns} color="emerald" />
+          <StatsCard icon={<Clock size={20} />} label="Awaiting Audit" value={pendingCampaigns.length + pendingGroups.length} color="amber" />
+          <StatsCard icon={<LayoutGrid size={20} />} label="Approved Nodes" value={stats.approvedGroups} color="indigo" />
+          <StatsCard icon={<DollarSign size={20} />} label="Total Revenue" value={`₹${(stats.totalRevenue || 0).toLocaleString()}`} color="emerald" />
         </div>
       )}
 
-      <div className="tab-bar">
+      {/* Domain Navigation */}
+      <div className="flex items-center gap-2 border-b border-slate-100 overflow-x-auto no-scrollbar">
         {['overview', 'campaigns', 'groups', 'users'].map(tab => (
           <button
             key={tab}
-            className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
             onClick={() => setActiveTab(tab)}
+            className={`px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all border-b-2 ${
+              activeTab === tab 
+                ? 'border-indigo-600 text-indigo-600' 
+                : 'border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-200'
+            }`}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            {tab === 'campaigns' && pendingCampaigns.length > 0 && (
-              <span className="tab-badge">{pendingCampaigns.length}</span>
+            {tab}
+            {(tab === 'campaigns' && pendingCampaigns.length > 0) && (
+              <span className="ml-2 bg-rose-500 text-white px-1.5 py-0.5 rounded text-[10px]">{pendingCampaigns.length}</span>
             )}
-            {tab === 'groups' && pendingGroups.length > 0 && (
-              <span className="tab-badge">{pendingGroups.length}</span>
+            {(tab === 'groups' && pendingGroups.length > 0) && (
+              <span className="ml-2 bg-amber-500 text-white px-1.5 py-0.5 rounded text-[10px]">{pendingGroups.length}</span>
             )}
           </button>
         ))}
       </div>
 
       {activeTab === 'overview' && stats && (
-        <div className="dashboard-grid">
-          <div className="card">
-            <div className="card-header"><h2><Activity size={20} /> Revenue Breakdown</h2></div>
-            <div className="card-body">
-              <div className="detail-list">
-                <div className="detail-item">
-                  <span className="detail-label">Total Revenue</span>
-                  <span className="detail-value">₹{(stats.totalRevenue || 0).toFixed(2)}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Publisher Payouts (70%)</span>
-                  <span className="detail-value">₹{(stats.totalPublisherPayouts || 0).toFixed(2)}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Platform Profit (30%)</span>
-                  <span className="detail-value highlight">₹{(stats.platformProfit || 0).toFixed(2)}</span>
-                </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="pro-card bg-slate-900 text-white border-transparent">
+            <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
+              <Activity size={20} className="text-emerald-400" />
+              Settlement Matrix
+            </h2>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center py-3 border-b border-white/10">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Gross Network Value</span>
+                <span className="text-xl font-bold">₹{(stats.totalRevenue || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-white/10">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Publisher Yield (70%)</span>
+                <span className="text-xl font-bold">₹{(stats.totalPublisherPayouts || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center py-3">
+                <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Platform Retention (30%)</span>
+                <span className="text-3xl font-black text-emerald-400">₹{(stats.platformProfit || 0).toLocaleString()}</span>
               </div>
             </div>
           </div>
-          <div className="card">
-            <div className="card-header"><h2>System Overview</h2></div>
-            <div className="card-body">
-              <div className="detail-list">
-                <div className="detail-item">
-                  <span className="detail-label">Total Campaigns</span>
-                  <span className="detail-value">{stats.totalCampaigns}</span>
+
+          <div className="pro-card">
+            <h2 className="text-lg font-bold text-slate-900 mb-6">Logical Totals</h2>
+            <div className="space-y-4">
+              {[
+                { label: 'Protocols Active', val: stats.totalCampaigns },
+                { label: 'Nodes Ingested', val: stats.totalGroups },
+                { label: 'Successful Broadcasts', val: stats.totalAdPosts }
+              ].map((item, i) => (
+                <div key={i} className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{item.label}</span>
+                  <span className="font-bold text-slate-900">{item.val}</span>
                 </div>
-                <div className="detail-item">
-                  <span className="detail-label">Total Groups</span>
-                  <span className="detail-value">{stats.totalGroups}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Total Ad Posts</span>
-                  <span className="detail-value">{stats.totalAdPosts}</span>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'campaigns' && (
-        <div className="card">
-          <div className="card-header"><h2>Pending Campaigns</h2></div>
-          <div className="card-body">
-            {pendingCampaigns.length === 0 ? (
-              <div className="empty-state"><CheckCircle size={48} /><p>No pending campaigns</p></div>
-            ) : (
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Advertiser</th>
-                      <th>Budget</th>
-                      <th>Cost/Post</th>
-                      <th>Created</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingCampaigns.map(c => (
-                      <tr key={c._id}>
-                        <td className="font-medium">{c.name}</td>
-                        <td>{c.advertiser?.email}</td>
-                        <td>₹{c.budget.toFixed(2)}</td>
-                        <td>₹{c.costPerPost}</td>
-                        <td>{new Date(c.createdAt).toLocaleDateString()}</td>
-                        <td>
-                          <div className="action-btns">
-                            <button onClick={() => handleCampaignAction(c._id, 'active')} className="action-btn action-btn--success" title="Approve">
-                              <CheckCircle size={16} />
-                            </button>
-                            <button onClick={() => {
-                              const reason = prompt('Rejection reason (optional):');
-                              handleCampaignAction(c._id, 'rejected', reason || '');
-                            }} className="action-btn action-btn--danger" title="Reject">
-                              <XCircle size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        <section className="pro-card p-0 overflow-hidden">
+          <div className="p-6 border-b border-slate-50 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-900">Campaign Audit Queue</h2>
           </div>
-        </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                  <th className="px-8 py-4">Profile</th>
+                  <th className="px-6 py-4">Advertiser</th>
+                  <th className="px-6 py-4">Cap (₹)</th>
+                  <th className="px-6 py-4">Niche</th>
+                  <th className="px-8 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {pendingCampaigns.map(c => (
+                  <tr key={c._id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-8 py-6 font-bold text-sm">{c.name}</td>
+                    <td className="px-6 py-6 text-xs text-slate-500">{c.advertiser?.email}</td>
+                    <td className="px-6 py-6 font-bold text-sm">₹{c.budget}</td>
+                    <td className="px-6 py-6 text-xs font-black uppercase text-slate-400">{c.niche}</td>
+                    <td className="px-8 py-6 text-right">
+                       <div className="flex gap-2 justify-end">
+                          <button onClick={() => handleCampaignAction(c._id, 'active')} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all">
+                             <CheckCircle size={16} />
+                          </button>
+                          <button onClick={() => handleCampaignAction(c._id, 'rejected', 'Failed baseline')} className="p-2 bg-rose-50 text-rose-600 rounded-lg border border-rose-100 hover:bg-rose-600 hover:text-white transition-all">
+                             <XCircle size={16} />
+                          </button>
+                       </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {pendingCampaigns.length === 0 && <div className="py-20 text-center text-slate-400 italic text-sm">No campaigns awaiting audit.</div>}
+          </div>
+        </section>
       )}
 
       {activeTab === 'groups' && (
-        <div className="card">
-          <div className="card-header"><h2>Pending Groups</h2></div>
-          <div className="card-body">
-            {pendingGroups.length === 0 ? (
-              <div className="empty-state"><CheckCircle size={48} /><p>No pending groups</p></div>
-            ) : (
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Owner</th>
-                      <th>Group ID</th>
-                      <th>Members</th>
-                      <th>Category</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingGroups.map(g => (
-                      <tr key={g._id}>
-                        <td className="font-medium">{g.name}</td>
-                        <td>{g.owner?.email}</td>
-                        <td><code>{g.telegramGroupId}</code></td>
-                        <td>{g.memberCount?.toLocaleString()}</td>
-                        <td>{g.category}</td>
-                        <td>
-                          <div className="action-btns">
-                            <button onClick={() => handleGroupAction(g._id, 'approved')} className="action-btn action-btn--success" title="Approve">
-                              <CheckCircle size={16} />
-                            </button>
-                            <button onClick={() => {
-                              const reason = prompt('Rejection reason (optional):');
-                              handleGroupAction(g._id, 'rejected', reason || '');
-                            }} className="action-btn action-btn--danger" title="Reject">
-                              <XCircle size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        <section className="pro-card p-0 overflow-hidden">
+          <div className="p-6 border-b border-slate-50 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-900">Node Ingestion Queue</h2>
           </div>
-        </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                  <th className="px-8 py-4">Node Identity</th>
+                  <th className="px-6 py-4">Owner</th>
+                  <th className="px-6 py-4">Pop.</th>
+                  <th className="px-6 py-4">Niche</th>
+                  <th className="px-8 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {pendingGroups.map(g => (
+                  <tr key={g._id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-8 py-6 font-bold text-sm">{g.name}</td>
+                    <td className="px-6 py-6 text-xs text-slate-500">{g.owner?.email}</td>
+                    <td className="px-6 py-6 font-bold text-sm">{g.memberCount?.toLocaleString()}</td>
+                    <td className="px-6 py-6 text-xs font-black uppercase text-slate-400">{g.category}</td>
+                    <td className="px-8 py-6 text-right">
+                       <div className="flex gap-2 justify-end">
+                          <button onClick={() => handleGroupAction(g._id, 'approved')} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all">
+                             <CheckCircle size={16} />
+                          </button>
+                          <button onClick={() => handleGroupAction(g._id, 'rejected', 'Insufficient quality')} className="p-2 bg-rose-50 text-rose-600 rounded-lg border border-rose-100 hover:bg-rose-600 hover:text-white transition-all">
+                             <XCircle size={16} />
+                          </button>
+                       </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {pendingGroups.length === 0 && <div className="py-20 text-center text-slate-400 italic text-sm">No group nodes awaiting ingestion.</div>}
+          </div>
+        </section>
       )}
 
       {activeTab === 'users' && (
-        <div className="card">
-          <div className="card-header"><h2>All Users</h2></div>
-          <div className="card-body">
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Wallet</th>
-                    <th>Joined</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(u => (
-                    <tr key={u._id}>
-                      <td className="font-medium">{u.email}</td>
-                      <td><span className={`badge badge--${u.role}`}>{u.role}</span></td>
-                      <td>₹{(u.walletBalance || 0).toFixed(2)}</td>
-                      <td>{new Date(u.createdAt).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <section className="pro-card p-0 overflow-hidden">
+          <div className="p-6 border-b border-slate-50 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-900">Entity Directory</h2>
           </div>
-        </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                  <th className="px-8 py-4">Identity</th>
+                  <th className="px-6 py-4">Clearance</th>
+                  <th className="px-6 py-4">Liquidity</th>
+                  <th className="px-8 py-4 text-right">Sync Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {users.map(u => (
+                  <tr key={u._id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-8 py-6 font-bold text-sm">{u.email}</td>
+                    <td className="px-6 py-6">
+                       <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
+                          u.role === 'superadmin' ? 'bg-indigo-600 text-white' :
+                          u.role === 'admin' ? 'bg-indigo-100 text-indigo-700' :
+                          'bg-slate-100 text-slate-600'
+                       }`}>
+                          {u.role}
+                       </span>
+                    </td>
+                    <td className="px-6 py-6 font-bold text-sm">₹{(u.walletBalance || 0).toLocaleString()}</td>
+                    <td className="px-8 py-6 text-right text-[10px] font-bold text-slate-400 uppercase">
+                       {new Date(u.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   );
