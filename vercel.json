@@ -1,34 +1,67 @@
 {
   "version": 2,
   "builds": [
-    { "src": "frontend/package.json", "use": "@vercel/static-build" },
-    { "src": "backend/api/index.js", "use": "@vercel/node" },
-    { "src": "python_bot/api/bot.py", "use": "@vercel/python" }
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build"
+    },
+    {
+      "src": "backend/api/index.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "python_bot/api/bot.py",
+      "use": "@vercel/python"
+    }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "backend/api/index.js" },
-    { "source": "/bot/(.*)", "destination": "python_bot/api/bot.py" },
-    { "source": "/login", "destination": "frontend/index.html" },
-    { "source": "/register", "destination": "frontend/index.html" },
-    { "source": "/dashboard", "destination": "frontend/index.html" },
-    { "source": "/wallet", "destination": "frontend/index.html" },
-    { "source": "/groups", "destination": "frontend/index.html" },
-    { "source": "/campaigns", "destination": "frontend/index.html" },
-    { "source": "/admin", "destination": "frontend/index.html" },
-    { "source": "/superadmin", "destination": "frontend/index.html" },
-    { "source": "/assets/(.*)", "destination": "frontend/dist/assets/$1" },
-    { "source": "/(.*)\\.(js|css|png|jpg|svg|ico)", "destination": "frontend/dist/$1" },
-    { "source": "/((?!api|bot|static).*)", "destination": "frontend/index.html" }
-  ],
-  "headers": [
     {
       "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Credentials", "value": "true" },
-        { "key": "Access-Control-Allow-Origin", "value": "https://teleads-bots.vercel.app" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
-        { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, x-admin-secret" }
-      ]
+      "destination": "backend/api/index.js"
+    },
+    {
+      "source": "/bot/(.*)",
+      "destination": "python_bot/api/bot.py"
+    },
+    {
+      "source": "/login",
+      "destination": "frontend/index.html"
+    },
+    {
+      "source": "/register",
+      "destination": "frontend/index.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "frontend/index.html"
+    },
+    {
+      "source": "/wallet",
+      "destination": "frontend/index.html"
+    },
+    {
+      "source": "/groups",
+      "destination": "frontend/index.html"
+    },
+    {
+      "source": "/campaigns",
+      "destination": "frontend/index.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "frontend/index.html"
+    },
+    {
+      "source": "/superadmin",
+      "destination": "frontend/index.html"
+    },
+    {
+      "source": "/(.*)\\.(js|css|png|jpg|svg|ico)",
+      "destination": "frontend/$1.$2"
+    },
+    {
+      "source": "/((?!api|bot|static).*)",
+      "destination": "frontend/index.html"
     }
   ]
 }
