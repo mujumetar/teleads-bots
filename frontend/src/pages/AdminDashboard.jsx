@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
 import StatsCard from '../components/StatsCard';
+import PageHeader from '../components/PageHeader';
+import LoadingSpinner from '../components/LoadingSpinner';
 import {
-  Shield, Users, Megaphone, LayoutGrid, DollarSign,
+  Users, Megaphone, LayoutGrid, DollarSign,
   CheckCircle, XCircle, Clock, Activity, Loader2, Zap, Search, ChevronRight
 } from 'lucide-react';
 
@@ -68,33 +70,24 @@ export default function AdminDashboard() {
     }
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-[400px]">
-      <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-    </div>
-  );
+  if (loading) return <LoadingSpinner label="Loading admin data…" />;
 
   return (
-    <div className="space-y-10 animate-fade-in mb-20 max-w-7xl mx-auto px-4 sm:px-6">
-      {/* Header Profile */}
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-6 py-8 border-b border-slate-100">
-        <div className="space-y-1">
-           <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
-             <Shield className="text-indigo-600" />
-             Command Center
-           </h1>
-           <p className="text-slate-500 text-sm font-medium">Global governance and node administration portal.</p>
-        </div>
-
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 mb-20 space-y-10 animate-fade-in">
+      <PageHeader
+        badge="Admin"
+        title="Operations"
+        description="Approve campaigns and groups, view users, and trigger ad delivery runs."
+      >
         <button 
           onClick={triggerAds}
           disabled={triggering}
-          className="pro-btn-primary bg-indigo-600 hover:bg-indigo-700"
+          className="pro-btn-primary"
         >
           {triggering ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-          {triggering ? 'Triggering...' : 'Force Ad Cycle'}
+          {triggering ? 'Running…' : 'Run ad cycle'}
         </button>
-      </section>
+      </PageHeader>
 
       {/* Main Stats */}
       {stats && (
@@ -115,7 +108,7 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab(tab)}
             className={`px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all border-b-2 ${
               activeTab === tab 
-                ? 'border-indigo-600 text-indigo-600' 
+                ? 'border-primary text-primary' 
                 : 'border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-200'
             }`}
           >

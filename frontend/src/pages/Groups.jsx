@@ -1,203 +1,152 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { Plus, Bot, Users, Eye, DollarSign, BarChart3, RefreshCw, Trash2, CheckCircle, XCircle, Layers, Edit3 } from 'lucide-react';
 import api from '../api/axios';
-import { 
-  PlusCircle, 
-  Users, 
-  ExternalLink, 
-  Trash2, 
-  Clock, 
-  Bot, 
-  Search,
-  Globe,
-  ChevronRight
-} from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+
+const cn = (...c) => c.filter(Boolean).join(' ');
+const STATUS = {
+  approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  pending:  'bg-amber-100 text-amber-700 border-amber-200',
+  rejected: 'bg-rose-100 text-rose-700 border-rose-200',
+};
 
 export default function Groups() {
   const [groups, setGroups] = useState([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [newGroup, setNewGroup] = useState({ name: '', telegramGroupId: '', telegramGroupUsername: '', memberCount: '', category: 'technology' });
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
 
-  useEffect(() => {
-    fetchGroups();
-  }, []);
+  const load = () => { setLoading(true); api.get('/groups').then(r=>setGroups(r.data)).catch(()=>{}).finally(()=>setLoading(false)); };
+  useEffect(load, []);
 
-  const fetchGroups = async () => {
-    try {
-      const res = await api.get('/groups');
-      setGroups(res.data);
-    } catch (err) {
-      console.error('Inventory Retrieval Error:', err);
-    } finally {
-      setLoading(false);
-    }
+  const handleDelete = async (id) => {
+    if (!window.confirm('Remove this channel?')) return;
+    try { await api.delete(`/groups/${id}`); load(); } catch {}
   };
 
-  const handleAddGroup = async (e) => {
-    e.preventDefault();
-    try {
-      await api.post('/groups', newGroup);
-      setShowAdd(false);
-      setNewGroup({ name: '', telegramGroupId: '', telegramGroupUsername: '', memberCount: '', category: 'technology' });
-      fetchGroups();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error adding group');
-    }
-  };
-
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-[400px]">
-      <div className="w-8 h-8 border-2 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin"></div>
-    </div>
-  );
+  const filtered = filter==='all' ? groups : groups.filter(g=>g.status===filter);
+  const earned   = groups.reduce((s,g)=>s+(g.revenueEarned||0),0);
+  const members  = groups.reduce((s,g)=>s+(g.memberCount||0),0);
+  const approved = groups.filter(g=>g.status==='approved').length;
 
   return (
-    <div className="space-y-10 animate-fade-in mb-20 max-w-7xl mx-auto px-4 sm:px-6">
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-6 py-8 border-b border-slate-100">
-        <div className="space-y-1">
-           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Publisher Inventory</h1>
-           <p className="text-slate-500 text-sm font-medium">Manage and index your Telegram monetization nodes.</p>
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900">My Channels</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{groups.length} registered · {approved} approved</p>
         </div>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button onClick={load} className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 transition-all"><RefreshCw size={14}/></button>
+          <Link to="/groups/new" className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-500/25">
+            <Plus size={16}/> Add Channel
+          </Link>
+        </div>
+      </div>
 
-        <button 
-          onClick={() => setShowAdd(!showAdd)}
-          className="pro-btn-accent"
-        >
-          <PlusCircle size={16} />
-          {showAdd ? 'Cancel' : 'Add Group'}
-        </button>
-      </section>
-
-      {showAdd && (
-        <section className="pro-card border-emerald-100 bg-emerald-50/10">
-          <h2 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
-            <Globe size={20} className="text-emerald-600" />
-            Provision New Node
-          </h2>
-          <form onSubmit={handleAddGroup} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Node Name</label>
-              <input
-                type="text"
-                placeholder="Technology News"
-                className="pro-input"
-                value={newGroup.name}
-                onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Telegram Group ID</label>
-              <input
-                type="text"
-                placeholder="-100xxxxxxxx"
-                className="pro-input"
-                value={newGroup.telegramGroupId}
-                onChange={(e) => setNewGroup({ ...newGroup, telegramGroupId: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Username Handle</label>
-               <input
-                 type="text"
-                 placeholder="@group_username"
-                 className="pro-input"
-                 value={newGroup.telegramGroupUsername}
-                 onChange={(e) => setNewGroup({ ...newGroup, telegramGroupUsername: e.target.value })}
-               />
-            </div>
-            <div className="space-y-2">
-               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Population (Members)</label>
-               <input
-                 type="number"
-                 placeholder="5000"
-                 className="pro-input"
-                 value={newGroup.memberCount}
-                 onChange={(e) => setNewGroup({ ...newGroup, memberCount: e.target.value })}
-                 required
-               />
-            </div>
-            <div className="md:col-span-2 pt-4">
-               <button type="submit" className="pro-btn-accent w-full py-4 uppercase font-bold text-xs tracking-widest">Authorize Ingestion</button>
-            </div>
-          </form>
-        </section>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {groups.map((group) => (
-          <div key={group._id} className="pro-card hover:bg-slate-50/50 relative group">
-            <div className="flex flex-col h-full justify-between">
-               <div className="space-y-6">
-                  <div className="flex items-start justify-between">
-                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center border border-slate-100">
-                           <Users size={22} />
-                        </div>
-                        <div>
-                           <h3 className="text-lg font-bold text-slate-900 leading-tight mb-1">{group.name}</h3>
-                           <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold text-slate-400">
-                                {group.telegramGroupUsername || 'Private Node'}
-                              </span>
-                              {group.telegramGroupUsername && (
-                                <a href={`https://t.me/${group.telegramGroupUsername.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-slate-300 hover:text-indigo-600 transition-colors">
-                                   <ExternalLink size={12} />
-                                </a>
-                              )}
-                           </div>
-                        </div>
-                     </div>
-                     <div className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${
-                       group.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100'
-                     }`}>
-                       {group.status}
-                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-6 py-6 border-y border-slate-50">
-                     <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Members</p>
-                        <p className="text-lg font-bold text-slate-900">{group.memberCount?.toLocaleString()}</p>
-                     </div>
-                     <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Niche</p>
-                        <p className="text-lg font-bold text-slate-900 capitalize">{group.category || 'Tech'}</p>
-                     </div>
-                     <div className="space-y-1 text-right">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Reach</p>
-                        <p className="text-lg font-bold text-emerald-600">{Math.floor(group.memberCount * 0.12).toLocaleString()}</p>
-                     </div>
-                  </div>
-               </div>
-
-               <div className="pt-6 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                     <button className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
-                        <Trash2 size={16} />
-                     </button>
-                  </div>
-                  <button className="text-xs font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1 transition-colors">
-                    Node Stats <ChevronRight size={14} />
-                  </button>
-               </div>
-            </div>
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          {l:'Total Earned', v:`₹${earned.toFixed(2)}`, c:'text-emerald-600', bg:'bg-emerald-50 border-emerald-100', icon:DollarSign},
+          {l:'Total Reach',  v:`${members.toLocaleString()} members`, c:'text-indigo-600', bg:'bg-indigo-50 border-indigo-100', icon:Users},
+          {l:'Active Channels', v:approved, c:'text-violet-600', bg:'bg-violet-50 border-violet-100', icon:Bot},
+        ].map(m=>(
+          <div key={m.l} className={cn('rounded-2xl border p-4 flex items-center gap-4', m.bg)}>
+            <m.icon size={20} className={m.c}/>
+            <div><p className={cn('text-xl font-black', m.c)}>{m.v}</p><p className="text-xs text-slate-400 font-medium">{m.l}</p></div>
           </div>
         ))}
-        
-        {groups.length === 0 && (
-          <div className="lg:col-span-2 py-40 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center text-center space-y-4">
-             <Bot size={40} className="text-slate-200" />
-             <div className="space-y-1">
-                <h3 className="text-lg font-bold text-slate-400">Inventory Empty</h3>
-                <p className="text-sm font-medium text-slate-400 max-w-sm">Synchronize your first Telegram group node to begin yield operations.</p>
-             </div>
-             <button onClick={() => setShowAdd(true)} className="pro-btn-secondary py-2.5">Provision Node</button>
-          </div>
-        )}
       </div>
+
+      {/* Filter */}
+      <div className="flex bg-slate-100 rounded-xl p-1 w-fit">
+        {['all','approved','pending','rejected'].map(f=>(
+          <button key={f} onClick={()=>setFilter(f)}
+            className={cn('px-3 py-1.5 rounded-lg text-xs font-bold transition-all capitalize', filter===f?'bg-white text-indigo-600 shadow-sm':'text-slate-500 hover:text-slate-700')}>
+            {f==='all'?'All':f} ({f==='all'?groups.length:groups.filter(g=>g.status===f).length})
+          </button>
+        ))}
+      </div>
+
+      {/* List */}
+      {loading ? (
+        <div className="grid sm:grid-cols-2 gap-4">{[1,2,3,4].map(i=><div key={i} className="skeleton h-48 rounded-2xl"/>)}</div>
+      ) : filtered.length===0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center py-20 gap-3">
+          <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400"><Layers size={26}/></div>
+          <p className="text-sm font-bold text-slate-700">{filter==='all'?'No channels yet':'No '+filter+' channels'}</p>
+          {filter==='all'&&<Link to="/groups/new" className="mt-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">Add Your First Channel</Link>}
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-4">
+          {filtered.map(g=>(
+            <div key={g._id} className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-md transition-all group animate-fade-in">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center text-indigo-500 shrink-0">
+                    <Bot size={18}/>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-800 truncate">{g.name}</p>
+                    <p className="text-[11px] text-slate-400">{g.telegramGroupId||'—'}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0 ml-2">
+                  <Link to={`/groups/edit/${g._id}`} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-indigo-50 text-indigo-500"><Edit3 size={13}/></Link>
+                  <button onClick={()=>handleDelete(g._id)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-rose-50 text-rose-400">
+                    <Trash2 size={13}/>
+                  </button>
+                </div>
+              </div>
+
+              <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase mb-4', STATUS[g.status]||'bg-slate-100 text-slate-500 border-slate-200')}>
+                {g.status}
+              </span>
+
+              {g.status==='pending' && (
+                <div className="mb-3 p-2.5 rounded-xl bg-amber-50 border border-amber-100">
+                  <p className="text-[11px] text-amber-700 font-semibold">⏳ Under review — usually takes 24h</p>
+                </div>
+              )}
+              {g.status==='rejected' && (
+                <div className="mb-3 p-2.5 rounded-xl bg-rose-50 border border-rose-100">
+                  <p className="text-[11px] text-rose-700 font-semibold">❌ {g.rejectionReason||'Does not meet requirements'}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {l:'Members', v:(g.memberCount||0).toLocaleString(), Icon:Users, c:'text-indigo-500'},
+                  {l:'Avg Views', v:(g.avgViews||0).toLocaleString(), Icon:Eye, c:'text-violet-500'},
+                  {l:'Earned', v:`₹${(g.revenueEarned||0).toFixed(0)}`, Icon:DollarSign, c:'text-emerald-500'},
+                ].map(m=>(
+                  <div key={m.l} className="bg-slate-50 rounded-xl p-2.5 text-center">
+                    <m.Icon size={12} className={cn('mx-auto mb-1', m.c)}/>
+                    <p className="text-sm font-black text-slate-800">{m.v}</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase">{m.l}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-50">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-semibold">CPM Rate</p>
+                  <p className="text-sm font-black text-indigo-600">₹{g.dynamicCpm||80}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-semibold">Score</p>
+                  <p className={cn('text-sm font-black', (g.performanceScore||0)>=10?'text-emerald-600':(g.performanceScore||0)>=5?'text-amber-600':'text-rose-600')}>
+                    {g.performanceScore||0}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-semibold">Ads Posted</p>
+                  <p className="text-sm font-black text-slate-700">{g.totalAdsPosted||0}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

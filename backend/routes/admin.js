@@ -3,19 +3,17 @@ const User = require('../models/User');
 const Campaign = require('../models/Campaign');
 const Group = require('../models/Group');
 const AdPost = require('../models/AdPost');
+const SystemConfig = require('../models/SystemConfig');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { push, Notify } = require('../services/notify');
 
 const router = express.Router();
 
 // Public/Secret-based routes (Must be BEFORE general auth middleware)
 // POST /api/admin/link-telegram - Synchronize TG ID with User Email
-router.post('/link-telegram', async (req, res) => {
+// Allows admin secret OR JWT authentication for admin/superadmin
+router.post('/link-telegram', authenticate, requireRole('admin', 'superadmin'), async (req, res) => {
   try {
-    const adminSecret = req.headers['x-admin-secret'];
-    if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
-      return res.status(403).json({ message: 'Forbidden' });
-    }
-    
     const { email, telegramId } = req.body;
     const user = await User.findOneAndUpdate({ email }, { telegramId }, { new: true });
     if (!user) return res.status(404).json({ message: 'User profile not found' });
@@ -26,21 +24,54 @@ router.post('/link-telegram', async (req, res) => {
   }
 });
 
-// GET /api/admin/trigger-ads - Manually trigger the ad scheduler (Important for Vercel Cron Jobs)
-// Accessible via ADMIN_SECRET or Vercel CRON_SECRET for automated execution
-router.get('/trigger-ads', async (req, res) => {
+// GET /api/admin/trigger-ads - Manually trigger the ad scheduler
+// Accessible via JWT (admin/superadmin) OR ADMIN_SECRET or Vercel CRON_SECRET
+router.get('/trigger-ads', async (req, res, next) => {
+  const secret = req.headers['x-admin-secret'];
+  const cronSecret = req.headers['x-vercel-cron'];
+  
+  if (secret === process.env.ADMIN_SECRET || cronSecret === process.env.CRON_SECRET) {
+     return next();
+  }
+  // If no secret, pass to authenticate middleware
+  authenticate(req, res, next);
+}, async (req, res) => {
   try {
-    const adminSecret = req.headers['x-admin-secret'] || req.headers['authorization']?.split(' ')[1];
-    const isCron = req.headers['x-vercel-cron'] === '1';
-    
-    // Allow if it has the correct secret or is a verified Vercel Cron
-    if (!isCron && (!adminSecret || adminSecret !== process.env.ADMIN_SECRET)) {
-      return res.status(403).json({ message: 'Forbidden' });
-    }
-
     const { processAdQueue } = require('../bot/telegramBot');
-    await processAdQueue();
+    await processAdQueue(req.query.force === 'true');
     res.json({ success: true, message: 'Ad cycle triggered successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/admin/bot-config - Fetch all active bot tokens
+// Validates via ADMIN_SECRET (used by python_bot)
+router.get('/bot-config', async (req, res) => {
+  const secret = req.headers['x-admin-secret'];
+  if (secret !== process.env.ADMIN_SECRET) {
+    return res.status(401).json({ message: 'Invalid admin secret' });
+  }
+  try {
+    const Bot = require('../models/Bot');
+    const bots = await Bot.find({ status: 'active' });
+    res.json(bots);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/admin/bot-settings - Fetch global app settings for the bot
+// Validates via ADMIN_SECRET
+router.get('/bot-settings', async (req, res) => {
+  const secret = req.headers['x-admin-secret'];
+  if (secret !== process.env.ADMIN_SECRET) {
+    return res.status(401).json({ message: 'Invalid admin secret' });
+  }
+  try {
+    const GlobalSetting = require('../models/GlobalSetting');
+    const settings = await GlobalSetting.find();
+    res.json(settings);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -52,6 +83,99 @@ router.use(authenticate, requireRole('admin', 'superadmin'));
 const Bot = require('../models/Bot');
 const Transaction = require('../models/Transaction');
 const GlobalSetting = require('../models/GlobalSetting');
+
+// GET /api/admin/all-data - Consolidated dashboard data for optimization
+router.get('/all-data', async (req, res) => {
+  try {
+    const [
+      users, campaigns, groups, bots, transactions, settings, adPosts, config
+    ] = await Promise.all([
+      User.find().sort({ createdAt: -1 }),
+      Campaign.find().populate('advertiser', 'email').sort({ createdAt: -1 }),
+      Group.find().populate('owner', 'email').sort({ createdAt: -1 }),
+      Bot.find().sort({ isPrimary: -1, createdAt: -1 }),
+      Transaction.find().populate('user', 'email').sort({ createdAt: -1 }),
+      GlobalSetting.find(),
+      AdPost.find().limit(500), // For performance stats calculation
+      SystemConfig.findOne() || SystemConfig.create({})
+    ]);
+
+    // Aggregate performance stats on the fly
+    const campaignStats = campaigns.map(c => {
+      const logs = adPosts.filter(p => p.campaign && p.campaign.toString() === c._id.toString());
+      return {
+        _id: c._id,
+        name: c.name,
+        totalAds: logs.length,
+        totalImpressions: logs.reduce((s, l) => s + (l.impressions || 0), 0),
+        totalClicks: logs.reduce((s, l) => s + (l.clicks || 0), 0),
+        totalCost: logs.reduce((s, l) => s + (l.costCharged || 0), 0)
+      };
+    });
+
+    const groupStats = groups.map(g => {
+      const logs = adPosts.filter(p => p.group && p.group.toString() === g._id.toString());
+      return {
+        _id: g._id,
+        name: g.name,
+        totalAds: logs.length,
+        totalImpressions: logs.reduce((s, l) => s + (l.impressions || 0), 0),
+        totalClicks: logs.reduce((s, l) => s + (l.clicks || 0), 0),
+        totalEarnings: logs.reduce((s, l) => s + (l.publisherEarnings || 0), 0)
+      };
+    });
+
+    // Basic Stats
+    const stats = {
+      totalUsers: users.length,
+      totalCampaigns: campaigns.length,
+      activeCampaigns: campaigns.filter(c => c.status === 'active').length,
+      totalGroups: groups.length,
+      approvedGroups: groups.filter(g => g.status === 'approved').length,
+      totalRevenue: adPosts.reduce((s, p) => s + (p.costCharged || 0), 0),
+      totalPublisherPayouts: adPosts.reduce((s, p) => s + (p.publisherEarnings || 0), 0),
+    };
+    stats.platformProfit = stats.totalRevenue - stats.totalPublisherPayouts;
+
+    // Self-healing: Ensure any campaign with [FILLER] in name is marked as isFiller
+    for (const camp of campaigns) {
+      if (camp.name.includes('[FILLER]') && !camp.isFiller) {
+        camp.isFiller = true;
+        await camp.save();
+      }
+    }
+
+    res.json({
+      stats,
+      users,
+      campaigns,
+      groups,
+      bots,
+      transactions,
+      settings,
+      config,
+      performanceStats: { campaignStats, groupStats }
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PUT /api/admin/config - Update SystemConfig
+router.put('/config', requireRole('superadmin'), async (req, res) => {
+  try {
+    let config = await SystemConfig.findOne();
+    if (!config) config = new SystemConfig();
+    
+    Object.assign(config, req.body);
+    config.lastUpdated = Date.now();
+    await config.save();
+    
+    res.json(config);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 // GET /api/admin/stats - Enhanced Dashboard stats
 router.get('/stats', async (req, res) => {
@@ -185,7 +309,7 @@ router.post('/transactions/deposit', async (req, res) => {
     
     const user = await User.findByIdAndUpdate(
       userId,
-      { $inc: { walletBalance: amount } },
+      { $inc: { advertiserWallet: amount } },
       { new: true }
     ).select('-password');
     
@@ -207,13 +331,24 @@ router.put('/transactions/:id/status', async (req, res) => {
     } else if (tx.status === 'pending' && status === 'rejected') {
       // If was withdrawal, refund the user
       if (tx.type === 'withdrawal' || tx.type === 'payout') {
-        await User.findByIdAndUpdate(tx.user, { $inc: { walletBalance: tx.amount } });
+        await User.findByIdAndUpdate(tx.user, { $inc: { publisherWallet: tx.amount } });
       }
     }
     
     tx.status = status;
     tx.adminNote = adminNote;
     await tx.save();
+
+    // Push Telegram notification to user
+    const txUser = await User.findById(tx.user);
+    if (txUser?.telegramId && (tx.type === 'withdrawal' || tx.type === 'payout')) {
+      if (status === 'completed') {
+        push(txUser.telegramId, Notify.withdrawalApproved(tx.amount, tx.note || 'UPI'));
+      } else if (status === 'rejected') {
+        push(txUser.telegramId, Notify.withdrawalRejected(tx.amount, tx.adminNote));
+      }
+    }
+
     res.json(tx);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -306,8 +441,16 @@ router.put('/campaigns/:id/status', async (req, res) => {
     const update = { status };
     if (status === 'rejected' && rejectionReason) update.rejectionReason = rejectionReason;
     const campaign = await Campaign.findByIdAndUpdate(req.params.id, update, { new: true })
-      .populate('advertiser', 'email');
+      .populate('advertiser', 'email telegramId');
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
+
+    // Push Telegram notification to advertiser
+    if (campaign.advertiser?.telegramId) {
+      if (status === 'active') {
+        push(campaign.advertiser.telegramId, Notify.campaignApproved(campaign.name, campaign.budget, campaign.cpm));
+      }
+    }
+
     res.json(campaign);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -324,8 +467,18 @@ router.put('/groups/:id/status', async (req, res) => {
     const update = { status };
     if (status === 'rejected' && rejectionReason) update.rejectionReason = rejectionReason;
     const group = await Group.findByIdAndUpdate(req.params.id, update, { new: true })
-      .populate('owner', 'email');
+      .populate('owner', 'email telegramId');
     if (!group) return res.status(404).json({ message: 'Group not found' });
+
+    // Push Telegram notification to group owner
+    if (group.owner?.telegramId) {
+      if (status === 'approved') {
+        push(group.owner.telegramId, Notify.groupApproved(group.name, group.dynamicCpm));
+      } else if (status === 'rejected') {
+        push(group.owner.telegramId, Notify.groupRejected(group.name, rejectionReason));
+      }
+    }
+
     res.json(group);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -346,18 +499,120 @@ router.get('/adposts', async (req, res) => {
   }
 });
 
-// POST /api/admin/wallet/:userId - Add funds to user wallet (superadmin)
+// POST /api/admin/wallet/:userId - Adjust user wallet (superadmin)
 router.post('/wallet/:userId', requireRole('superadmin'), async (req, res) => {
   try {
-    const { amount } = req.body;
-    if (!amount || amount <= 0) return res.status(400).json({ message: 'Invalid amount' });
+    const { amount, walletType, note } = req.body; // walletType: 'advertiser' | 'publisher'
+    if (!amount || isNaN(amount)) return res.status(400).json({ message: 'Invalid amount' });
+    if (!['advertiser', 'publisher'].includes(walletType)) {
+      return res.status(400).json({ message: 'Invalid wallet type' });
+    }
+
+    const field = walletType === 'advertiser' ? 'advertiserWallet' : 'publisherWallet';
     const user = await User.findByIdAndUpdate(
       req.params.userId,
-      { $inc: { walletBalance: amount } },
+      { $inc: { [field]: amount } },
       { new: true }
     ).select('-password');
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Create a transaction record for this adjustment
+    const Transaction = require('../models/Transaction');
+    await Transaction.create({
+      user: user._id,
+      amount: Math.abs(amount),
+      type: amount > 0 ? 'deposit' : 'withdrawal',
+      status: 'completed',
+      reference: 'Manual Admin Adjustment',
+      note: note || `Admin adjusted ${walletType} wallet by ₹${amount}`
+    });
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+
+// PUT /api/admin/users/:id - Update user details (Superadmin only)
+router.put('/users/:id', requireRole('superadmin'), async (req, res) => {
+  try {
+    const { role, advertiserWallet, publisherWallet, isActive } = req.body;
+    const user = await User.findByIdAndUpdate(req.params.id, { 
+      role, advertiserWallet, publisherWallet, isActive 
+    }, { new: true });
+    
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/admin/users/:id
+router.delete('/users/:id', requireRole('superadmin'), async (req, res) => {
+  try {
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'User deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/admin/groups/:id
+router.delete('/groups/:id', requireRole('superadmin'), async (req, res) => {
+  try {
+    await Group.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Group deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/admin/campaigns/:id
+// DELETE /api/admin/campaigns/:id
+router.delete('/campaigns/:id', requireRole('superadmin'), async (req, res) => {
+  try {
+    await Campaign.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Campaign deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/admin/performance-stats - Aggregated performance metrics
+router.get('/performance-stats', async (req, res) => {
+  try {
+    const AdPost = require('../models/AdPost');
+    
+    // Campaign wise stats
+    const campaignStats = await AdPost.aggregate([
+      { $group: {
+        _id: '$campaign',
+        totalAds: { $sum: 1 },
+        totalImpressions: { $sum: '$impressions' },
+        totalClicks: { $sum: '$clicks' },
+        totalCost: { $sum: '$costCharged' }
+      }},
+      { $lookup: { from: 'campaigns', localField: '_id', foreignField: '_id', as: 'campaign' }},
+      { $unwind: '$campaign' }
+    ]);
+
+    // Group wise stats
+    const groupStats = await AdPost.aggregate([
+      { $group: {
+        _id: '$group',
+        totalAds: { $sum: 1 },
+        totalImpressions: { $sum: '$impressions' },
+        totalClicks: { $sum: '$clicks' },
+        totalEarnings: { $sum: '$publisherEarnings' }
+      }},
+      { $lookup: { from: 'groups', localField: '_id', foreignField: '_id', as: 'group' }},
+      { $unwind: '$group' }
+    ]);
+
+    res.json({ campaignStats, groupStats });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

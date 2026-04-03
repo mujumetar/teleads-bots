@@ -1,6 +1,7 @@
 const express = require('express');
 const Campaign = require('../models/Campaign');
 const Group = require('../models/Group');
+const User = require('../models/User');
 const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -20,10 +21,18 @@ router.get('/audience-estimate', authenticate, async (req, res) => {
 // POST /api/campaigns - Create a new campaign
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { name, adText, adImageUrl, budget, costPerPost, niche, trackingUrl } = req.body;
+    const { name, adText, adImageUrl, budget, costPerPost, niche, trackingUrl, isFiller, fillerCpm } = req.body;
     if (!name || !adText || !budget) {
       return res.status(400).json({ message: 'Name, adText, and budget are required' });
     }
+    
+    const user = await User.findById(req.user.id);
+    const isSuperAdminFiller = req.user.role === 'superadmin' && isFiller;
+
+    if (!isSuperAdminFiller && (!user || user.advertiserWallet < budget)) {
+      return res.status(400).json({ message: `Insufficient advertiser wallet balance. Required: ₹${budget}, Available: ₹${user?.advertiserWallet || 0}` });
+    }
+
     const campaign = await Campaign.create({
       advertiser: req.user.id,
       name,
@@ -32,8 +41,10 @@ router.post('/', authenticate, async (req, res) => {
       niche: niche || 'other',
       budget,
       costPerPost: costPerPost || 10,
-      status: 'pending',
+      status: isSuperAdminFiller ? 'active' : 'pending',
       trackingUrl,
+      isFiller: isFiller || false,
+      fillerCpm: fillerCpm || 24
     });
     res.status(201).json(campaign);
   } catch (err) {
@@ -90,6 +101,13 @@ router.put('/:id', authenticate, async (req, res) => {
       delete updates.status;
       delete updates.advertiser;
     }
+    if (updates.budget && updates.budget > campaign.budget) {
+      const user = await User.findById(req.user.id);
+      if (!user || user.advertiserWallet < updates.budget) {
+        return res.status(400).json({ message: `Insufficient balance to increase budget to ₹${updates.budget}` });
+      }
+    }
+
     Object.assign(campaign, updates);
     await campaign.save();
     res.json(campaign);

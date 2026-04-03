@@ -11,6 +11,14 @@ const adminRoutes = require('./routes/admin');
 const paymentRoutes = require('./routes/payments');
 const trackingRoutes = require('./routes/tracking');
 const categoryRoutes = require('./routes/categories');
+const cronRoutes = require('./routes/cron');
+const aiRoutes = require('./routes/ai');
+const systemConfigRoutes = require('./routes/systemConfig');
+const walletRoutes = require('./routes/wallet');
+const analyticsRoutes = require('./routes/analytics');
+const antiFraudRoutes = require('./routes/antiFraud');
+const manualAdsRoutes = require('./routes/manualAds');
+const transactionsRoutes = require('./routes/transactions');
 
 // Import bot
 const { initBot, processAdQueue } = require('./bot/telegramBot');
@@ -32,7 +40,7 @@ const ALLOWED_ORIGINS = [
 // Manual preflight handler (IMPORTANT: Must be at the very top, before all routes)
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const isAllowed = !origin || ALLOWED_ORIGINS.includes(origin) || /\.vercel\.app$/.test(origin);
+  const isAllowed = !origin || ALLOWED_ORIGINS.includes(origin) || /\.vercel\.app$/.test(origin) || /^https?:\/\/localhost:\d+$/.test(origin) || /^https?:\/\/127\.0\.0\.1:\d+$/.test(origin);
   if (isAllowed && origin) {
     res.header('Access-Control-Allow-Origin', origin);
   }
@@ -47,59 +55,52 @@ app.use((req, res, next) => {
 
 // Middleware
 // CORS Configuration
-const allowedOrigins = [
-  'https://teleads-bots.vercel.app',
-  'https://teleads-bots-api.vercel.app',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173'
-];
-
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    const isAllowed = allowedOrigins.includes(origin) || /\.vercel\.app$/.test(origin);
+    const isAllowed = ALLOWED_ORIGINS.includes(origin) || /\.vercel\.app$/.test(origin) || /^https?:\/\/localhost:\d+$/.test(origin) || /^https?:\/\/127\.0\.0\.1:\d+$/.test(origin);
     if (isAllowed) {
       callback(null, true);
     } else {
+      console.log('CORS blocked for origin:', origin);
       callback(new Error('CORS blocked for this origin'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret', 'X-CSRF-Token', 'X-Requested-With', 'Accept', 'Accept-Version', 'Content-Length', 'Content-MD5', 'Date', 'X-Api-Version']
 }));
 app.use(express.json());
 
-// Database Connection Caching for Serverless
-let cachedConnection = null;
+// Database: single connect in serverless + local (cached by mongoose driver)
+let dbConnectPromise = null;
 
-app.use(async (req, res, next) => {
+function connectMongo() {
   if (mongoose.connection.readyState === 1) {
-    return next();
+    return Promise.resolve();
   }
-
-  if (cachedConnection) {
-    return next();
-  }
-
   if (!process.env.MONGODB_URI) {
-    return res.status(500).json({ message: 'MONGODB_URI is missing in Vercel settings' });
+    return Promise.reject(new Error('MONGODB_URI is not set'));
   }
-
-  try {
-    console.log('⏳ Connecting to MongoDB...');
-    cachedConnection = await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
+  if (!dbConnectPromise) {
+    dbConnectPromise = mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 8000,
       connectTimeoutMS: 10000,
     });
-    console.log('✅ MongoDB connected successfully');
+  }
+  return dbConnectPromise;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await connectMongo();
     next();
   } catch (err) {
-    console.error('❌ MongoDB Connection Error:', err.message);
+    console.error('MongoDB:', err.message);
     res.status(500).json({
       message: 'Database connection failed',
       error: err.message,
-      tip: 'Check your MONGODB_URI in Vercel settings and ensure Atlas Network Access is set to 0.0.0.0/0'
+      tip: 'Set MONGODB_URI in Vercel env (Atlas: allow 0.0.0.0/0 or Vercel IPs)',
     });
   }
 });
@@ -112,6 +113,14 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/cron', cronRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/system', systemConfigRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/anti-fraud', antiFraudRoutes);
+app.use('/api/admin/manual-ads', manualAdsRoutes);
+app.use('/api/transactions', transactionsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -144,21 +153,14 @@ if (!process.env.VERCEL) {
         }
       });
 
-      // Run ad queue processor every 30 minutes
-      setInterval(processAdQueue, 30 * 60 * 1000);
-      console.log('⏰ Ad scheduler started (runs every 30 min)');
+      // Run ad queue processor every minute (it checks its own internal interval)
+      setInterval(processAdQueue, 60 * 1000);
+      console.log('⏰ Ad scheduler check active (every 1 min)');
     })
     .catch(err => {
       console.error('❌ MongoDB connection error:', err.message);
       process.exit(1);
     });
-} else {
-  // If on Vercel, just connect to DB immediately
-  mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  }).then(() => console.log('✅ MongoDB connected (Serverless)'))
-    .catch(err => console.error('❌ MongoDB connection error:', err.message));
 }
 
 module.exports = app;

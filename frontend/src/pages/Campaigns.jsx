@@ -1,250 +1,186 @@
 import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus, Search, Eye, MousePointerClick, DollarSign, Pause, Play, Trash2, BarChart3, TrendingUp, Megaphone, RefreshCw, Edit3 } from 'lucide-react';
 import api from '../api/axios';
-import { 
-  PlusCircle, 
-  Megaphone, 
-  Target, 
-  TrendingUp, 
-  DollarSign, 
-  Calendar, 
-  Trash2, 
-  BarChart2, 
-  ChevronRight, 
-  Zap, 
-  Activity,
-  Search,
-  ExternalLink,
-  Bot,
-  Filter,
-  Layers,
-  MousePointerClick
-} from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+
+const cn = (...c) => c.filter(Boolean).join(' ');
+
+function StatusBadge({ status }) {
+  const s = {
+    active:    'bg-emerald-100 text-emerald-700 border border-emerald-200',
+    pending:   'bg-amber-100 text-amber-700 border border-amber-200',
+    paused:    'bg-slate-100 text-slate-600 border border-slate-200',
+    rejected:  'bg-rose-100 text-rose-700 border border-rose-200',
+    completed: 'bg-indigo-100 text-indigo-700 border border-indigo-200',
+  };
+  return <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide', s[status] || 'bg-slate-100 text-slate-500 border border-slate-200')}>{status}</span>;
+}
+
+function CampaignCard({ c, onStatus, onDelete }) {
+  const pct = Math.min(((c.budgetSpent||0) / (c.budget||1)) * 100, 100);
+  const ctr = c.totalImpressions > 0 ? ((c.totalClicks||0) / c.totalImpressions * 100).toFixed(1) : '0';
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-md transition-all group animate-fade-in">
+      <div className="flex items-start justify-between mb-3">
+        <div className="min-w-0">
+          <Link to={`/campaigns/${c._id}`} className="font-bold text-slate-800 hover:text-indigo-600 transition-colors text-sm">{c.name}</Link>
+          <p className="text-[11px] text-slate-400 capitalize mt-0.5">{c.niche||'General'} · CPM ₹{c.cpm||100}</p>
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+          <Link to={`/campaigns/edit/${c._id}`} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-indigo-50 text-indigo-500"><Edit3 size={13}/></Link>
+          {c.status==='active'
+            ? <button onClick={()=>onStatus(c._id,'paused')} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><Pause size={13}/></button>
+            : <button onClick={()=>onStatus(c._id,'active')} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><Play size={13}/></button>}
+          <button onClick={()=>onDelete(c._id)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-rose-50 text-rose-400"><Trash2 size={13}/></button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 mb-4">
+        <StatusBadge status={c.status}/>
+        {c.autoPlacement && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100">Auto</span>}
+      </div>
+
+      <div className="mb-4">
+        <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1.5">
+          <span>Budget</span>
+          <span>₹{(c.budgetSpent||0).toLocaleString()} / ₹{(c.budget||0).toLocaleString()}</span>
+        </div>
+        <div className="progress-track">
+          <div className="progress-fill" style={{width:`${pct}%`, background: pct>80?'#f59e0b':'#6366f1'}}/>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          {l:'Impressions', v:(c.totalImpressions||0).toLocaleString(), Icon:Eye, col:'text-indigo-500'},
+          {l:'Clicks',      v:(c.totalClicks||0).toLocaleString(),      Icon:MousePointerClick, col:'text-violet-500'},
+          {l:'CTR',         v:`${ctr}%`, Icon:TrendingUp, col:'text-emerald-500'},
+        ].map(m=>(
+          <div key={m.l} className="bg-slate-50 rounded-xl p-2.5 text-center">
+            <m.Icon size={12} className={cn('mx-auto mb-1', m.col)}/>
+            <p className="text-sm font-black text-slate-800">{m.v}</p>
+            <p className="text-[9px] text-slate-400 font-bold uppercase">{m.l}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const FILTERS = ['all','active','paused','pending','completed','rejected'];
 
 export default function Campaigns() {
   const [campaigns, setCampaigns] = useState([]);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newCampaign, setNewCampaign] = useState({ name: '', adText: '', budget: '', niche: 'technology', trackingUrl: '' });
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('grid');
 
-  useEffect(() => {
-    fetchCampaigns();
-  }, []);
+  const load = () => { setLoading(true); api.get('/campaigns').then(r=>setCampaigns(r.data)).catch(()=>{}).finally(()=>setLoading(false)); };
+  useEffect(load, []);
 
-  const fetchCampaigns = async () => {
-    try {
-      const res = await api.get('/campaigns');
-      setCampaigns(res.data);
-    } catch (err) {
-      console.error('Campaign Retrieval Error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleStatus = async (id, status) => { try { await api.put(`/campaigns/${id}`,{status}); load(); } catch{} };
+  const handleDelete = async (id) => { if(!window.confirm('Delete?')) return; try { await api.delete(`/campaigns/${id}`); load(); } catch{} };
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    try {
-      await api.post('/campaigns', newCampaign);
-      setShowCreate(false);
-      setNewCampaign({ name: '', adText: '', budget: '', niche: 'technology', trackingUrl: '' });
-      fetchCampaigns();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error creating campaign');
-    }
-  };
-
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-[400px]">
-      <div className="w-8 h-8 border-2 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin"></div>
-    </div>
-  );
+  const filtered = campaigns.filter(c => (filter==='all'||c.status===filter) && (!search||c.name.toLowerCase().includes(search.toLowerCase())));
+  const spend = campaigns.reduce((s,c)=>s+(c.budgetSpent||0),0);
+  const impr  = campaigns.reduce((s,c)=>s+(c.totalImpressions||0),0);
+  const clicks= campaigns.reduce((s,c)=>s+(c.totalClicks||0),0);
 
   return (
-    <div className="space-y-10 animate-fade-in mb-20 max-w-7xl mx-auto px-4 sm:px-6">
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-6 py-8 border-b border-slate-100">
-        <div className="space-y-1">
-           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Campaign Analytics</h1>
-           <p className="text-slate-500 text-sm font-medium">Coordinate your advertising logic across the ad matrix.</p>
+    <div className="space-y-5 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900">Campaigns</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{campaigns.length} total · {campaigns.filter(c=>c.status==='active').length} active</p>
         </div>
-
-        <button 
-          onClick={() => setShowCreate(!showCreate)}
-          className="pro-btn-primary"
-        >
-          <PlusCircle size={16} />
-          {showCreate ? 'Close Protocol' : 'New Campaign'}
-        </button>
-      </section>
-
-      {/* Campaigns Matrix Table */}
-      <section className="pro-card p-0 overflow-hidden">
-        <div className="p-6 border-b border-slate-50 flex items-center justify-between">
-           <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-900">Active Matrix</h2>
-           </div>
-           <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
-                 <Search size={14} className="text-slate-400" />
-                 <input type="text" placeholder="Search..." className="bg-transparent border-none text-xs font-semibold text-slate-500 outline-none w-40 placeholder:text-slate-300" />
-              </div>
-           </div>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button onClick={load} className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 transition-all"><RefreshCw size={14}/></button>
+          <Link to="/campaigns/new" className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/25"><Plus size={16}/>New Campaign</Link>
         </div>
+      </div>
 
-        <div className="overflow-x-auto custom-scrollbar">
-           <table className="w-full text-left border-collapse">
-              <thead>
-                 <tr className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] border-b border-slate-100">
-                    <th className="px-8 py-4">Campaign Profile</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Niche Target</th>
-                    <th className="px-6 py-4">Budget Cycle</th>
-                    <th className="px-6 py-4 text-right">Yield Metrics</th>
-                    <th className="px-8 py-4 text-right">Actions</th>
-                 </tr>
+      {/* KPI row */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          {l:'Total Spend',  v:`₹${spend.toLocaleString()}`,    c:'#6366f1', Icon:DollarSign},
+          {l:'Impressions',  v:impr.toLocaleString(),            c:'#8b5cf6', Icon:Eye},
+          {l:'Total Clicks', v:clicks.toLocaleString(),          c:'#10b981', Icon:MousePointerClick},
+        ].map(m=>(
+          <div key={m.l} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{background:m.c+'18'}}>
+              <m.Icon size={18} style={{color:m.c}}/>
+            </div>
+            <div><p className="text-xl font-black text-slate-900">{m.v}</p><p className="text-[11px] text-slate-400 font-medium">{m.l}</p></div>
+          </div>
+        ))}
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search campaigns…"
+            className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 transition-all"/>
+        </div>
+        <div className="flex bg-slate-100 rounded-xl p-1">
+          {FILTERS.map(f=>(
+            <button key={f} onClick={()=>setFilter(f)}
+              className={cn('px-3 py-1.5 rounded-lg text-xs font-bold transition-all capitalize', filter===f?'bg-white text-indigo-600 shadow-sm':'text-slate-500 hover:text-slate-700')}>
+              {f==='all'?'All':f}
+            </button>
+          ))}
+        </div>
+        <div className="flex bg-slate-100 rounded-xl p-1">
+          <button onClick={()=>setView('grid')} className={cn('px-3 py-1.5 rounded-lg text-xs font-bold transition-all', view==='grid'?'bg-white shadow-sm text-indigo-600':'text-slate-400')}>⊞ Grid</button>
+          <button onClick={()=>setView('table')} className={cn('px-3 py-1.5 rounded-lg text-xs font-bold transition-all', view==='table'?'bg-white shadow-sm text-indigo-600':'text-slate-400')}>☰ Table</button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{[1,2,3,4,5,6].map(i=><div key={i} className="skeleton h-52 rounded-2xl"/>)}</div>
+      ) : filtered.length===0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center py-20 gap-3">
+          <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400"><Megaphone size={26}/></div>
+          <p className="text-sm font-bold text-slate-700">{search||filter!=='all'?'No matches found':'No campaigns yet'}</p>
+          <p className="text-xs text-slate-400">{search||filter!=='all'?'Try changing your filters.':'Create your first campaign to start running ads.'}</p>
+          {!search&&filter==='all'&&<Link to="/campaigns/new" className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors">Launch Campaign</Link>}
+        </div>
+      ) : view==='grid' ? (
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filtered.map(c=><CampaignCard key={c._id} c={c} onStatus={handleStatus} onDelete={handleDelete}/>)}
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>{['Campaign','Status','Budget','Impressions','CTR',''].map(h=><th key={h} className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-wider">{h}</th>)}</tr>
               </thead>
-              <tbody>
-                 {campaigns.map((camp) => (
-                    <tr key={camp._id} className="border-b border-slate-50 group hover:bg-slate-50/20 transition-colors">
-                       <td className="px-8 py-6">
-                          <div className="flex items-center gap-4">
-                             <div className="w-10 h-10 rounded-xl bg-slate-50 text-indigo-600 flex items-center justify-center border border-slate-100">
-                                <Megaphone size={18} />
-                             </div>
-                             <div>
-                                <h4 className="text-sm font-bold text-slate-900 leading-tight mb-0.5">{camp.name}</h4>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{camp.trackingUrl ? 'Trackable Link' : 'Direct Logic'}</p>
-                             </div>
-                          </div>
-                       </td>
-                       <td className="px-6 py-6">
-                          <div className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1.5 ${
-                             camp.status === 'active' ? 'bg-emerald-50 text-emerald-600' :
-                             camp.status === 'completed' ? 'bg-slate-100 text-slate-500' :
-                             'bg-amber-50 text-amber-600'
-                          }`}>
-                             {camp.status}
-                          </div>
-                       </td>
-                       <td className="px-6 py-6 font-semibold text-xs text-slate-600 capitalize">{camp.niche}</td>
-                       <td className="px-6 py-6 min-w-[200px]">
-                          <div className="space-y-1.5">
-                             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest">
-                                <span className="text-slate-400">Used: ₹{camp.budgetSpent}</span>
-                                <span className="text-slate-900">Total: ₹{camp.budget}</span>
-                             </div>
-                             <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-slate-900 rounded-full transition-all duration-1000 ease-out"
-                                  style={{ width: `${Math.min((camp.budgetSpent / camp.budget) * 100, 100)}%` }}
-                                ></div>
-                             </div>
-                          </div>
-                       </td>
-                       <td className="px-6 py-6 text-right">
-                          <div className="flex flex-col items-end">
-                             <p className="text-sm font-bold text-slate-900">{(camp.totalImpressions || 0).toLocaleString()}</p>
-                             <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                <span className="text-emerald-500">{camp.totalClicks || 0} Clicks</span>
-                                <span>• {(camp.totalClicks / (camp.totalImpressions || 1) * 100).toFixed(1)}% CTR</span>
-                             </div>
-                          </div>
-                       </td>
-                       <td className="px-8 py-6 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                             <button className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
-                                <Trash2 size={16} />
-                             </button>
-                             <button className="p-2 text-slate-900 hover:text-indigo-600 transition-colors">
-                                <ChevronRight size={16} />
-                             </button>
-                          </div>
-                       </td>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map(c=>{
+                  const ctr = c.totalImpressions>0 ? ((c.totalClicks||0)/c.totalImpressions*100).toFixed(1):'0';
+                  return (
+                    <tr key={c._id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3"><p className="font-semibold text-slate-800">{c.name}</p><p className="text-[11px] text-slate-400 capitalize">{c.niche||'General'}</p></td>
+                      <td className="px-4 py-3"><StatusBadge status={c.status}/></td>
+                      <td className="px-4 py-3 text-xs font-bold text-slate-700">₹{(c.budgetSpent||0).toLocaleString()} / ₹{(c.budget||0).toLocaleString()}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-700">{(c.totalImpressions||0).toLocaleString()}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-700">{ctr}%</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <Link to={`/campaigns/${c._id}`} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-indigo-50 text-indigo-400"><BarChart3 size={13}/></Link>
+                          {c.status==='active'
+                            ? <button onClick={()=>handleStatus(c._id,'paused')} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><Pause size={13}/></button>
+                            : <button onClick={()=>handleStatus(c._id,'active')} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><Play size={13}/></button>}
+                        </div>
+                      </td>
                     </tr>
-                 ))}
-                 
-                 {campaigns.length === 0 && (
-                    <tr>
-                       <td colSpan="6" className="py-40 text-center space-y-4">
-                          <Layers size={32} className="text-slate-200 mx-auto" />
-                          <div className="space-y-1">
-                             <h4 className="text-lg font-bold text-slate-400">Inventory Empty</h4>
-                             <p className="text-sm font-medium text-slate-400 max-w-sm mx-auto">Initialize a new campaign to begin your ad broadcast cycle.</p>
-                          </div>
-                          <button onClick={() => setShowCreate(true)} className="pro-btn-secondary py-2.5">Provision Campaign</button>
-                       </td>
-                    </tr>
-                 )}
+                  );
+                })}
               </tbody>
-           </table>
-        </div>
-      </section>
-
-      {/* Creation Modal Overhaul */}
-      {showCreate && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-fade-in group">
-           <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm" onClick={() => setShowCreate(false)}></div>
-           <form onSubmit={handleCreate} className="relative w-full max-w-xl bg-white rounded-2xl border border-slate-100 shadow-2xl p-10 overflow-hidden animate-slide-up">
-              <div className="relative space-y-6">
-                 <div className="flex items-center gap-4 mb-2">
-                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Campaign Deployment v1.4</h2>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Protocol Name</label>
-                       <input
-                         type="text"
-                         className="pro-input"
-                         placeholder="e.g. Q2 Growth Hub"
-                         value={newCampaign.name}
-                         onChange={(e) => setNewCampaign({ ...newCampaign, name: e.target.value })}
-                         required
-                       />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Cycle Budget (₹)</label>
-                       <input
-                         type="number"
-                         className="pro-input"
-                         placeholder="5,000"
-                         value={newCampaign.budget}
-                         onChange={(e) => setNewCampaign({ ...newCampaign, budget: e.target.value })}
-                         required
-                       />
-                    </div>
-                    <div className="md:col-span-2 space-y-2">
-                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Ad Content (Post Copy)</label>
-                       <textarea
-                         className="pro-input h-32 resize-none pt-4 pr-12"
-                         placeholder="Define your ad broadcast logic here..."
-                         value={newCampaign.adText}
-                         onChange={(e) => setNewCampaign({ ...newCampaign, adText: e.target.value })}
-                         required
-                       />
-                    </div>
-                    <div className="md:col-span-2 space-y-2">
-                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 flex items-center gap-2">
-                         Tracking Redirect URL
-                         <span className="text-emerald-600 opacity-60">(Recommended)</span>
-                       </label>
-                       <input
-                         type="url"
-                         className="pro-input border-emerald-100 bg-emerald-50/10 placeholder:text-emerald-200"
-                         placeholder="https://t.me/your_path"
-                         value={newCampaign.trackingUrl}
-                         onChange={(e) => setNewCampaign({ ...newCampaign, trackingUrl: e.target.value })}
-                       />
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1 leading-relaxed italic">Your links will be automatically wrapped in our TeleAds conversion telemetry.</p>
-                    </div>
-                 </div>
-
-                 <div className="flex gap-3 pt-6 border-t border-slate-50">
-                    <button type="button" onClick={() => setShowCreate(false)} className="pro-btn-secondary flex-1">Abort</button>
-                    <button type="submit" className="pro-btn-primary flex-[2]">Initialize Cycle</button>
-                 </div>
-              </div>
-           </form>
+            </table>
+          </div>
         </div>
       )}
     </div>

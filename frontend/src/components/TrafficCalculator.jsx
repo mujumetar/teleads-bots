@@ -43,7 +43,7 @@ export default function TrafficCalculator() {
 
       <div className="relative z-10">
         <div className="flex items-center gap-4 mb-10">
-           <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xl shadow-indigo-100">
+           <div className="w-14 h-14 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-xl shadow-primary/20">
              <TrendingUp size={28} />
            </div>
            <div>
@@ -60,7 +60,7 @@ export default function TrafficCalculator() {
                   <Users size={12} />
                   Node Capacity (Members)
                 </label>
-                <span className="text-indigo-600 font-black">{members.toLocaleString()}</span>
+                <span className="text-primary font-black">{members.toLocaleString()}</span>
               </div>
               <input 
                 type="range" 
@@ -69,7 +69,7 @@ export default function TrafficCalculator() {
                 step="500" 
                 value={members} 
                 onChange={(e) => setMembers(parseInt(e.target.value))}
-                className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-primary"
               />
             </div>
 
@@ -82,7 +82,7 @@ export default function TrafficCalculator() {
                     onClick={() => setNiche(n)}
                     className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all font-bold text-xs ${
                       niche.name === n.name 
-                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm' 
+                        ? 'border-primary bg-primary/5 text-primary shadow-sm' 
                         : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'
                     }`}
                   >
@@ -124,16 +124,16 @@ export default function TrafficCalculator() {
              <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:20px_20px]"></div>
              
              <div>
-                <div className="flex items-center gap-2 text-indigo-400 font-black text-[10px] uppercase tracking-[0.2em] mb-8">
-                  <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></div>
-                  Projection Matrix
+                <div className="flex items-center gap-2 text-primary/80 font-black text-[10px] uppercase tracking-[0.2em] mb-8">
+                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+                  Revenue projection
                 </div>
 
                 <div className="space-y-10">
                    <div>
                       <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-1">Estimated Monthly Yield</p>
                       <h3 className="text-6xl font-black tracking-tight flex items-baseline gap-1">
-                        <span className="text-indigo-400">₹</span>
+                        <span className="text-primary">₹</span>
                         {result.monthly}
                       </h3>
                    </div>
@@ -153,7 +153,7 @@ export default function TrafficCalculator() {
 
              <div className="mt-12 flex items-center justify-between">
                 <div className="bg-white/5 border border-white/10 px-4 py-2 rounded-xl flex items-center gap-2">
-                   <Info size={14} className="text-indigo-400" />
+                   <Info size={14} className="text-primary" />
                    <span className="text-[10px] font-bold text-slate-400">Estimates based on 15% active engagement</span>
                 </div>
                 <button className="w-12 h-12 rounded-full bg-white text-slate-900 flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-xl">

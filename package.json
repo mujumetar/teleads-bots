@@ -2,9 +2,12 @@
   "name": "teleads-monorepo",
   "version": "1.0.0",
   "scripts": {
-    "build": "echo 'Vercel will build via individual workspaces defined in vercel.json'",
+    "build": "cd frontend && npm run build",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
     "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../python_bot && pip install -r requirements.txt"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "fiber": "^1.0.4",
+    "framer-motion": "^12.38.0"
+  }
 }

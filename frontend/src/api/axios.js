@@ -1,12 +1,15 @@
 import axios from 'axios';
 
+const baseURL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? `${window.location.origin}/api` : 'http://localhost:5000/api');
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://teleads-bots-api.vercel.app/api',
-  // baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
-// Attach token to every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -15,7 +18,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 responses
 api.interceptors.response.use(
   (response) => response,
   (error) => {

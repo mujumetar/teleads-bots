@@ -1,277 +1,259 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
+  Clock, Download, CheckCircle, XCircle, Plus, Wallet as WalletIcon,
+  Smartphone, Landmark, History
+} from 'lucide-react';
 import api from '../api/axios';
-import StatsCard from '../components/StatsCard';
-import { Wallet, TrendingUp, History, PlusCircle, CreditCard, ChevronRight, Landmark, ArrowDownCircle, DollarSign, Activity, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export default function WalletPage() {
-  const { activeRole } = useAuth();
-  const [user, setUser] = useState(null);
-  const [amount, setAmount] = useState('');
+const cn = (...c) => c.filter(Boolean).join(' ');
+
+const METHODS = [
+  { id:'upi',  label:'UPI',          icon:Smartphone, hint:'Instant · 0% fee' },
+  { id:'bank', label:'Bank Transfer', icon:Landmark,   hint:'1-2 business days' },
+];
+
+function TxRow({ tx }) {
+  const credit = tx.type==='deposit'||tx.type==='earning';
+  const statusCls = {
+    completed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    pending:   'bg-amber-100 text-amber-700 border-amber-200',
+    rejected:  'bg-rose-100 text-rose-700 border-rose-200',
+    failed:    'bg-rose-100 text-rose-700 border-rose-200',
+  }[tx.status] || 'bg-slate-100 text-slate-600 border-slate-200';
+
+  return (
+    <tr className="hover:bg-slate-50 transition-colors">
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center shrink-0', credit?'bg-emerald-100 text-emerald-600':'bg-rose-100 text-rose-600')}>
+            {credit ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-700 capitalize">{tx.type}</p>
+            <p className="text-[10px] text-slate-400">{tx.reference||'—'}</p>
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <p className={cn('text-sm font-black', credit?'text-emerald-600':'text-rose-600')}>
+          {credit?'+':'-'}₹{parseFloat(tx.amount).toFixed(2)}
+        </p>
+      </td>
+      <td className="px-4 py-3">
+        <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase', statusCls)}>{tx.status}</span>
+      </td>
+      <td className="px-4 py-3 text-xs text-slate-400">
+        {new Date(tx.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}
+      </td>
+    </tr>
+  );
+}
+
+export default function Wallet() {
+  const { user, activeRole } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [razorpayKeyId, setRazorpayKeyId] = useState('');
-  const [withdrawData, setWithdrawData] = useState({ amount: '', method: 'UPI', details: '' });
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [wForm, setWForm] = useState({ amount:'', method:'upi', details:'' });
+  const [dForm, setDForm] = useState({ amount:'' });
+  const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [txFilter, setTxFilter] = useState('all');
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const isPublisher = activeRole==='publisher';
+  const balance = isPublisher ? (user?.publisherWallet||0) : (user?.advertiserWallet||0);
+  const MIN = 1000;
 
-  const fetchData = async () => {
-    try {
-      const [userRes, txRes, configRes] = await Promise.all([
-        api.get('/auth/me'),
-        api.get('/payments/transactions'),
-        api.get('/auth/config')
-      ]);
-      setUser(userRes.data);
-      setTransactions(txRes.data || []);
-      setRazorpayKeyId(configRes.data.razorpayKeyId);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(()=>{
+    api.get('/transactions').then(r=>setTransactions(r.data)).catch(()=>{}).finally(()=>setLoading(false));
+  },[]);
 
-  const loadRazorpay = () => {
-    return new Promise((resolve) => {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
+  const notify = (text, err=false) => { setToast({text,err}); setTimeout(()=>setToast(null),4000); };
+
+  const handleWithdraw = async (e) => {
+    e.preventDefault();
+    if(parseFloat(wForm.amount)<MIN){notify(`Min withdrawal ₹${MIN}`,true);return;}
+    if(parseFloat(wForm.amount)>balance){notify('Insufficient balance',true);return;}
+    setSubmitting(true);
+    try{ await api.post('/transactions/withdraw',wForm); notify('Withdrawal requested! ETA 24–48h.'); setShowWithdraw(false); setWForm({amount:'',method:'upi',details:''}); }
+    catch(err){ notify(err.response?.data?.message||'Failed',true); }
+    finally{ setSubmitting(false); }
   };
 
   const handleDeposit = async (e) => {
     e.preventDefault();
-    if (amount < 100) return alert('Minimum deposit ₹100');
-
-    try {
-      const res = await loadRazorpay();
-      if (!res) return alert('Razorpay SDK failed to load');
-
-      const { data: order } = await api.post('/payments/create-order', { amount: parseInt(amount) });
-
-      const options = {
-        key: razorpayKeyId,
-        amount: order.amount,
-        currency: order.currency,
-        name: 'TeleAds Platform',
-        description: 'Wallet Deposit',
-        order_id: order.id,
-        handler: async (response) => {
-          try {
-            await api.post('/payments/verify', response);
-            alert('Payment successful!');
-            fetchData();
-            setAmount('');
-          } catch (err) {
-            alert('Verification failed');
-          }
-        },
-        prefill: {
-          email: user?.email,
-        },
-        theme: {
-          color: '#6366f1',
-        },
-      };
-
-      const paymentObject = new window.Razorpay(options);
-      paymentObject.open();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error processing payment');
-    }
+    if(parseFloat(dForm.amount)<100){notify('Min deposit ₹100',true);return;}
+    setSubmitting(true);
+    try{ await api.post('/transactions/deposit',dForm); notify('Deposit initiated!'); setShowDeposit(false); }
+    catch(err){ notify(err.response?.data?.message||'Failed',true); }
+    finally{ setSubmitting(false); }
   };
 
-  const handleWithdraw = async (e) => {
-    e.preventDefault();
-    try {
-      await api.post('/payments/withdraw', withdrawData);
-      alert('Withdrawal request submitted! Superadmin will approve it soon.');
-      setWithdrawData({ amount: '', method: 'UPI', details: '' });
-      fetchData();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Withdrawal failed');
-    }
-  };
+  const totalIn  = transactions.filter(t=>t.type==='deposit'||t.type==='earning').reduce((s,t)=>s+(t.amount||0),0);
+  const totalOut = transactions.filter(t=>t.type==='withdrawal'||t.type==='spend').reduce((s,t)=>s+(t.amount||0),0);
+  const pending  = transactions.filter(t=>t.status==='pending').length;
+  const filtered = txFilter==='all' ? transactions : transactions.filter(t=>t.type===txFilter);
 
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-[400px]">
-      <div className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin"></div>
-    </div>
-  );
+  const inpCls = "w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-800 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10 transition-all";
 
   return (
-    <div className="space-y-10 animate-fade-in">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-           <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-emerald-500/20 shadow-xl">
-                 <Wallet size={28} />
-              </div>
-              <h1 className="text-4xl font-black text-slate-900 tracking-tight">Financial Center</h1>
-           </div>
-           <p className="text-slate-500 text-lg font-medium">Manage your platform liquidity and earnings</p>
+    <div className="space-y-6 animate-fade-in">
+      {/* Toast */}
+      {toast && (
+        <div className={cn('fixed bottom-6 right-6 z-50 toast flex items-center gap-3', toast.err?'border border-rose-500/30':'')}>
+          {toast.err ? <XCircle size={16} className="text-rose-400 shrink-0"/> : <CheckCircle size={16} className="text-emerald-400 shrink-0"/>}
+          <span>{toast.text}</span>
         </div>
-      </header>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatsCard icon={<Wallet size={24} />} label="Wallet Balance" value={`₹${user?.walletBalance?.toFixed(2)}`} color="emerald" />
-        <StatsCard icon={<TrendingUp size={24} />} label="Total Activity" value={`₹${transactions.filter(t => t.type === 'spend' || t.type === 'payout').reduce((a, b) => a + b.amount, 0).toFixed(2)}`} color="indigo" />
-        <StatsCard icon={<History size={24} />} label="Global Deposits" value={`₹${transactions.filter(t => t.type === 'deposit' && t.status === 'completed').reduce((a, b) => a + b.amount, 0).toFixed(2)}`} color="purple" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900">{isPublisher?'Publisher Earnings':'Advertiser Wallet'}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{isPublisher?'Track earnings and request payouts.':'Manage your campaign budget and payment history.'}</p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-        <div className="xl:col-span-4">
-          {activeRole === 'advertiser' ? (
-            <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-8 text-slate-50 opacity-20 -rotate-12 group-hover:rotate-0 transition-transform duration-700">
-                 <PlusCircle size={100} />
-              </div>
-              <div className="relative z-10 space-y-6">
-                <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-                  <CreditCard className="text-indigo-600" />
-                  Recharge Credits
-                </h2>
-                <p className="text-slate-500 font-medium leading-relaxed">Fuel your ad campaigns with instant deposits via Razorpay Secure.</p>
-                <form onSubmit={handleDeposit} className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Amount to Inject (₹)</label>
-                    <div className="relative group/input">
-                      <span className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-slate-400 group-focus-within/input:text-indigo-600 transition-colors">₹</span>
-                      <input
-                        type="number"
-                        min="100"
-                        placeholder="100"
-                        value={amount}
-                        className="pro-input pl-12"
-                        onChange={(e) => setAmount(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <button type="submit" className="pro-btn-primary w-full py-5 text-sm uppercase tracking-widest">
-                    <span>Authorize Recharge</span>
-                  </button>
-                </form>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-8 text-slate-50 opacity-20 -rotate-12 group-hover:rotate-0 transition-transform duration-700">
-                 <Landmark size={100} />
-              </div>
-              <div className="relative z-10 space-y-6">
-                <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-                  <ArrowDownCircle className="text-emerald-600" />
-                  Request Payout
-                </h2>
-                <p className="text-slate-500 font-medium leading-relaxed">Withdraw your ad earnings to your preferred payment method.</p>
-                <form onSubmit={handleWithdraw} className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Withdraw Amount (₹)</label>
-                    <input
-                      type="number"
-                      min="500"
-                      placeholder="500"
-                      className="pro-input"
-                      value={withdrawData.amount}
-                      onChange={(e) => setWithdrawData({ ...withdrawData, amount: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Channel</label>
-                    <select
-                      value={withdrawData.method}
-                      onChange={(e) => setWithdrawData({ ...withdrawData, method: e.target.value })}
-                      className="pro-input cursor-pointer"
-                    >
-                      <option value="UPI">UPI Protocol (Instant)</option>
-                      <option value="Bank">Bank Wire (NEFT/RTGS)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Destination Address</label>
-                    <textarea
-                      placeholder="e.g. VPA ID or Account + IFSC"
-                      value={withdrawData.details}
-                      onChange={(e) => setWithdrawData({ ...withdrawData, details: e.target.value })}
-                      required
-                      className="pro-input resize-none"
-                      rows={2}
-                    />
-                  </div>
-                  <button type="submit" className="pro-btn-primary w-full py-5 text-sm uppercase tracking-widest">
-                    <span>Initiate Payout</span>
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
+      {/* Balance cards */}
+      <div className="grid sm:grid-cols-4 gap-4">
+        <div className="sm:col-span-1 relative overflow-hidden rounded-2xl p-6" style={{background: isPublisher ? 'linear-gradient(135deg,#10b981,#059669)' : 'linear-gradient(135deg,#6366f1,#4f46e5)'}}>
+          <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/10"/>
+          <p className="text-xs font-bold text-white/70 uppercase tracking-wider mb-2">{isPublisher?'Publisher Wallet':'Advertiser Wallet'}</p>
+          <p className="text-3xl font-black text-white tabular-nums">₹{balance.toFixed(2)}</p>
+          <p className="text-white/60 text-xs mt-1 mb-5">Available {isPublisher?'for withdrawal':'for campaigns'}</p>
+          <div className="flex gap-2">
+            {isPublisher
+              ? <button onClick={()=>setShowWithdraw(true)} disabled={balance<MIN} className="flex-1 py-2 bg-white text-emerald-700 rounded-xl text-xs font-black hover:bg-white/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed">Withdraw</button>
+              : <button onClick={()=>setShowDeposit(true)} className="flex-1 py-2 bg-white text-indigo-700 rounded-xl text-xs font-black hover:bg-white/90 transition-all">Add Funds</button>}
+            <button className="w-9 h-9 flex items-center justify-center bg-white/20 text-white rounded-xl hover:bg-white/30 transition-all"><Download size={14}/></button>
+          </div>
+          {isPublisher && balance<MIN && <p className="text-white/60 text-[10px] mt-2 font-semibold">₹{(MIN-balance).toFixed(0)} more to unlock withdrawal</p>}
         </div>
+        {[
+          {l:'Total In',    v:`₹${totalIn.toFixed(2)}`,  icon:TrendingUp,   c:'text-emerald-600', bg:'bg-emerald-50  border-emerald-100'},
+          {l:'Total Out',   v:`₹${totalOut.toFixed(2)}`, icon:TrendingDown, c:'text-rose-600',    bg:'bg-rose-50    border-rose-100'},
+          {l:'Pending',     v:pending,                   icon:Clock,         c:'text-amber-600',   bg:'bg-amber-50   border-amber-100'},
+        ].map(m=>(
+          <div key={m.l} className={cn('rounded-2xl border p-5 flex flex-col gap-2', m.bg)}>
+            <m.icon size={18} className={m.c}/>
+            <p className={cn('text-2xl font-black', m.c)}>{m.v}</p>
+            <p className="text-xs text-slate-500 font-medium">{m.l}</p>
+          </div>
+        ))}
+      </div>
 
-        <div className="xl:col-span-8">
-           <section className="bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between p-8 border-b border-slate-50 bg-slate-50/30">
-                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-lg">
-                       <FileText size={18} />
-                    </div>
-                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">Financial Ledger</h2>
-                 </div>
-                 <div className="px-4 py-1.5 bg-white border border-slate-100 text-slate-400 rounded-lg text-[10px] font-black uppercase tracking-widest">
-                    Trace History
-                 </div>
+      {/* Withdraw modal */}
+      {showWithdraw && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={()=>setShowWithdraw(false)}>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 w-full max-w-md animate-fade-in" onClick={e=>e.stopPropagation()}>
+            <h2 className="text-lg font-black text-slate-900 mb-1">Request Withdrawal</h2>
+            <p className="text-sm text-slate-500 mb-5">Min ₹{MIN} · Balance: ₹{balance.toFixed(2)}</p>
+            <form onSubmit={handleWithdraw} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Amount (₹)</label>
+                <input type="number" value={wForm.amount} onChange={e=>setWForm(p=>({...p,amount:e.target.value}))} placeholder={`Min ₹${MIN}`} min={MIN} max={balance} required className={inpCls}/>
               </div>
-              
-              <div className="overflow-x-auto">
-                 <table className="w-full text-left border-collapse">
-                    <thead>
-                       <tr className="bg-slate-50/50 text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
-                          <th className="px-8 py-5">Type</th>
-                          <th className="px-8 py-5">Reference</th>
-                          <th className="px-8 py-5">Delta</th>
-                          <th className="px-8 py-5">Status</th>
-                          <th className="px-8 py-5">Node Date</th>
-                       </tr>
-                    </thead>
-                    <tbody>
-                       {transactions.slice(0, 10).map((tx) => (
-                          <tr key={tx._id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
-                             <td className="px-8 py-6">
-                                <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                                  tx.type === 'deposit' || tx.type === 'earning' ? 'bg-emerald-50 text-emerald-600' : 
-                                  'bg-rose-50 text-rose-600'
-                                }`}>{tx.type}</span>
-                             </td>
-                             <td className="px-8 py-6 font-bold text-slate-500 text-xs truncate max-w-[150px]">{tx.reference || 'Network Ops'}</td>
-                             <td className="px-8 py-6">
-                                <div className={`flex items-center gap-1.5 font-black text-lg ${tx.type === 'deposit' || tx.type === 'earning' ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                   <span>{tx.type === 'deposit' || tx.type === 'earning' ? '+' : '-'}</span>
-                                   <span>₹{tx.amount.toFixed(2)}</span>
-                                </div>
-                             </td>
-                             <td className="px-8 py-6">
-                                <div className="flex items-center gap-2">
-                                   <div className={`w-1.5 h-1.5 rounded-full ${tx.status === 'completed' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : tx.status === 'pending' ? 'bg-amber-500' : 'bg-rose-500'}`}></div>
-                                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{tx.status}</span>
-                                </div>
-                             </td>
-                             <td className="px-8 py-6 font-bold text-slate-400 text-xs uppercase">{new Date(tx.createdAt).toLocaleDateString()}</td>
-                          </tr>
-                       ))}
-                       {transactions.length === 0 && (
-                          <tr><td colSpan="5" className="text-center py-20 text-slate-300 font-bold italic tracking-widest uppercase">No ledger entries detected</td></tr>
-                       )}
-                    </tbody>
-                 </table>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Method</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {METHODS.map(m=>(
+                    <button key={m.id} type="button" onClick={()=>setWForm(p=>({...p,method:m.id}))}
+                      className={cn('p-3 rounded-xl border-2 text-left transition-all', wForm.method===m.id?'border-indigo-400 bg-indigo-50':'border-slate-200 hover:border-slate-300')}>
+                      <m.icon size={15} className={cn('mb-1', wForm.method===m.id?'text-indigo-600':'text-slate-400')}/>
+                      <p className={cn('text-xs font-bold', wForm.method===m.id?'text-indigo-700':'text-slate-700')}>{m.label}</p>
+                      <p className="text-[10px] text-slate-400">{m.hint}</p>
+                    </button>
+                  ))}
+                </div>
               </div>
-           </section>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Details</label>
+                <input value={wForm.details} onChange={e=>setWForm(p=>({...p,details:e.target.value}))}
+                  placeholder={wForm.method==='upi'?'yourname@upi':'Account number'} required className={inpCls}/>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={()=>setShowWithdraw(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
+                <button type="submit" disabled={submitting} className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-60">
+                  {submitting?<div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto"/>:'Request Payout'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
+      )}
+
+      {/* Deposit modal */}
+      {showDeposit && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={()=>setShowDeposit(false)}>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 w-full max-w-md animate-fade-in" onClick={e=>e.stopPropagation()}>
+            <h2 className="text-lg font-black text-slate-900 mb-1">Add Funds</h2>
+            <p className="text-sm text-slate-500 mb-5">Top up your advertiser wallet to run campaigns.</p>
+            <form onSubmit={handleDeposit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Select Amount</label>
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  {[500,1000,2000,5000].map(v=>(
+                    <button key={v} type="button" onClick={()=>setDForm({amount:v})}
+                      className={cn('py-2.5 rounded-xl text-xs font-black border-2 transition-all', String(dForm.amount)===String(v)?'border-indigo-400 bg-indigo-50 text-indigo-700':'border-slate-200 text-slate-600 hover:border-slate-300')}>
+                      ₹{v>=1000?`${v/1000}K`:v}
+                    </button>
+                  ))}
+                </div>
+                <input type="number" value={dForm.amount} onChange={e=>setDForm({amount:e.target.value})} placeholder="Custom amount (min ₹100)" min={100} required className={inpCls}/>
+              </div>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-500">
+                💡 Processed via Razorpay · UPI, Cards, Net Banking supported
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={()=>setShowDeposit(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
+                <button type="submit" disabled={submitting} className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors disabled:opacity-60">
+                  {submitting?<div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto"/>:`Pay ₹${dForm.amount||0}`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Transaction history */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <History size={16} className="text-slate-400"/>
+            <h2 className="font-bold text-slate-800">Transaction History</h2>
+          </div>
+          <div className="flex bg-slate-100 rounded-xl p-1">
+            {['all','deposit','withdrawal','earning','spend'].map(f=>(
+              <button key={f} onClick={()=>setTxFilter(f)}
+                className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all capitalize', txFilter===f?'bg-white text-indigo-600 shadow-sm':'text-slate-500 hover:text-slate-700')}>
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+        {loading ? (
+          <div className="p-5 space-y-3">{[1,2,3,4].map(i=><div key={i} className="skeleton h-12"/>)}</div>
+        ) : filtered.length===0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400"><WalletIcon size={22}/></div>
+            <p className="text-sm font-bold text-slate-700">No transactions yet</p>
+            <p className="text-xs text-slate-400">{isPublisher?'Earnings appear here after ads run.':'Add funds to start campaigns.'}</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>{['Transaction','Amount','Status','Date'].map(h=><th key={h} className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-wider">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map((tx,i)=><TxRow key={tx._id||i} tx={tx}/>)}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

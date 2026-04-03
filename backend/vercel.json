@@ -6,6 +6,12 @@
       "destination": "/api/index.js"
     }
   ],
+  "crons": [
+    {
+      "path": "/api/cron/process-ads",
+      "schedule": "*/15 * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

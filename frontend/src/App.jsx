@@ -14,6 +14,8 @@ import GroupCreate from './pages/GroupCreate';
 import Wallet from './pages/Wallet';
 import AdminDashboard from './pages/AdminDashboard';
 import SuperadminDashboard from './pages/SuperadminDashboard';
+import Analytics from './pages/Analytics';
+import AdInbox from './pages/AdInbox';
 import './App.css';
 
 function App() {
@@ -21,33 +23,37 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public routes */}
+          {/* Public */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Protected routes inside Layout */}
+          {/* Protected inside Layout */}
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/campaigns" element={<Campaigns />} />
-            <Route path="/campaigns/new" element={<CampaignCreate />} />
-            <Route path="/campaigns/:id" element={<CampaignDetail />} />
-            <Route path="/groups" element={<Groups />} />
-            <Route path="/groups/new" element={<GroupCreate />} />
-            <Route path="/wallet" element={<Wallet />} />
+            <Route path="/dashboard"      element={<Dashboard />} />
+            <Route path="/campaigns"      element={<Campaigns />} />
+            <Route path="/campaigns/new"  element={<CampaignCreate />} />
+            <Route path="/campaigns/edit/:id" element={<CampaignCreate />} />
+            <Route path="/campaigns/:id"  element={<CampaignDetail />} />
+            <Route path="/groups"         element={<Groups />} />
+            <Route path="/groups/new"     element={<GroupCreate />} />
+            <Route path="/groups/edit/:id" element={<GroupCreate />} />
+            <Route path="/wallet"         element={<Wallet />} />
+            <Route path="/analytics"      element={<Analytics />} />
+            <Route path="/ad-inbox"       element={<AdInbox />} />
 
-            {/* Admin routes */}
+            {/* Admin */}
             <Route path="/admin" element={
-              <ProtectedRoute roles={['admin', 'superadmin']}><AdminDashboard /></ProtectedRoute>
-            } />
-
-            {/* Superadmin routes */}
-            <Route path="/superadmin" element={
-              <ProtectedRoute roles={['superadmin']}><SuperadminDashboard /></ProtectedRoute>
+              <ProtectedRoute roles={['admin','superadmin']}><AdminDashboard /></ProtectedRoute>
             } />
           </Route>
 
-          {/* Default redirect */}
+          {/* Superadmin - Standalone Layout */}
+          <Route path="/superadmin" element={<Navigate to="/superadmin/overview" replace />} />
+          <Route path="/superadmin/:tab" element={
+            <ProtectedRoute roles={['superadmin']}><SuperadminDashboard /></ProtectedRoute>
+          } />
+
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
