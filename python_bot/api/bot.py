@@ -81,7 +81,8 @@ async def run_bot():
 
 async def main():
     asyncio.create_task(run_bot())
-    config = uvicorn.Config(app, host="0.0.0.0", port=7860, log_level="error")
+    port = int(os.getenv("PORT", 7860))
+    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="error")
     server = uvicorn.Server(config)
     await server.serve()
 
