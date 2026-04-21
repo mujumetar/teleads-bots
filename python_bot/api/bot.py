@@ -1,12 +1,11 @@
 """
-TeleAds Bot — Optimized Polling Mode (Hugging Face)
-Includes snappy polling and keeps the server alive on port 7860.
+TeleAds Bot — Production Polling Mode
+Optimized for Render, Hugging Face, and Local.
 """
 import os
 import asyncio
 import logging
 import httpx
-import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from telegram import (
@@ -33,16 +32,24 @@ ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
 
 app = FastAPI()
 
+# Global PTB instance
+ptb_app = None
+
 @app.get("/")
 async def health():
-    return {"status": "running", "mode": "optimized-polling"}
+    return {"status": "running", "bot": "TeleAds Pro", "mode": "production-polling"}
 
-# Handlers (Summarized for speed)
+# ──────────────────────────────────────────────
+#  Bot Handlers
+# ──────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     keyboard = [[InlineKeyboardButton("🌐 Dashboard", url=FRONT_URL),
                  InlineKeyboardButton("📡 Register", callback_data="menu_register")]]
-    await update.message.reply_html(f"🛰 <b>TeleAds Pro</b>\nHello {user.first_name}! How can I help?", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_html(
+        f"🛰 <b>TeleAds Pro</b>\nHello {user.first_name}! I am active and ready.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -50,40 +57,46 @@ async def btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data == "menu_register":
         await update.effective_message.reply_html("📡 Send /register inside your group to start.")
 
-# Add more handlers as needed...
-
-async def run_bot():
+# ──────────────────────────────────────────────
+#  Lifecycle Events (Startup/Shutdown)
+# ──────────────────────────────────────────────
+@app.on_event("startup")
+async def startup_event():
+    global ptb_app
     if not BOT_TOKEN:
-        log.error("❌ BOT_TOKEN missing!")
+        log.error("❌ BOT_TOKEN missing from Environment Variables!")
         return
 
-    # Using higher performance settings for polling
-    ptb = (
+    log.info("🚀 Initializing Telegram Bot...")
+    ptb_app = (
         ApplicationBuilder()
         .token(BOT_TOKEN)
         .read_timeout(30)
-        .write_timeout(30)
         .connect_timeout(30)
         .build()
     )
     
-    ptb.add_handler(CommandHandler("start", cmd_start))
-    # ... add other handlers here ...
-    ptb.add_handler(CallbackQueryHandler(btn_handler))
-
-    log.info("🚀 Starting Optimized Poller...")
-    await ptb.initialize()
-    await ptb.start()
+    ptb_app.add_handler(CommandHandler("start", cmd_start))
+    ptb_app.add_handler(CallbackQueryHandler(btn_handler))
     
-    # Fast polling interval (0.5s) instead of the default 3-5s
-    await ptb.updater.start_polling(poll_interval=0.5, drop_pending_updates=True)
-    await asyncio.Event().wait()
+    await ptb_app.initialize()
+    await ptb_app.start()
+    
+    # Start polling in the background without blocking FastAPI
+    await ptb_app.updater.start_polling(poll_interval=0.5, drop_pending_updates=True)
+    log.info("✅ Bot is now Polling 24/7.")
 
-async def main():
-    asyncio.create_task(run_bot())
-    config = uvicorn.Config(app, host="0.0.0.0", port=7860, log_level="error")
-    server = uvicorn.Server(config)
-    await server.serve()
+@app.on_event("shutdown")
+async def shutdown_event():
+    global ptb_app
+    if ptb_app:
+        log.info("🛑 Shutting down bot...")
+        await ptb_app.updater.stop()
+        await ptb_app.stop()
+        await ptb_app.shutdown()
 
+# This part is for running locally or via Render's simple 'python' command
 if __name__ == "__main__":
-    asyncio.run(main())
+    import uvicorn
+    port = int(os.getenv("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
