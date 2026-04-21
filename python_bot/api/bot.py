@@ -1,14 +1,17 @@
 """
-TeleAds Bot — Standalone Polling Mode (Local Development)
-Run: python api/bot.py
+TeleAds Bot — Webhook Mode (Vercel Serverless)
+Each invocation handles exactly ONE Telegram update via webhook.
 """
 import os
-import requests
+import json
 import asyncio
 import logging
+import httpx
 from dotenv import load_dotenv
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
+    Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, Bot
 )
 from telegram.ext import (
     Application, ApplicationBuilder, CommandHandler,
@@ -23,37 +26,55 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+BOT_TOKEN    = os.getenv("BOT_TOKEN", "")
 BACKEND_URL  = os.getenv("BACKEND_URL", "http://localhost:5000/api")
-FRONT_URL    = os.getenv("FRONT_URL",   "http://localhost:5173")
+FRONT_URL    = os.getenv("FRONT_URL",   "https://teleads.vercel.app")
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
 
 # ──────────────────────────────────────────────
-#  Fetch tokens from backend DB
+#  FastAPI app (Vercel entrypoint)
 # ──────────────────────────────────────────────
-def fetch_bot_tokens():
-    try:
-        r = requests.get(
-            f"{BACKEND_URL}/admin/bot-config",
-            headers={"x-admin-secret": ADMIN_SECRET},
-            timeout=10
+app = FastAPI()
+
+# Build the PTB Application once (reused across warm invocations)
+_ptb_app: Application | None = None
+
+def get_ptb_app() -> Application:
+    global _ptb_app
+    if _ptb_app is None:
+        _ptb_app = ApplicationBuilder().token(BOT_TOKEN).build()
+        _ptb_app.add_handler(CommandHandler("start",    cmd_start))
+        _ptb_app.add_handler(CommandHandler("register", cmd_register))
+        _ptb_app.add_handler(CommandHandler("link",     cmd_link))
+        _ptb_app.add_handler(CommandHandler("refer",    cmd_refer))
+        _ptb_app.add_handler(CommandHandler("stats",    cmd_stats))
+        _ptb_app.add_handler(CommandHandler("earnings", cmd_earnings))
+        _ptb_app.add_handler(CommandHandler("help",     cmd_help))
+        _ptb_app.add_handler(CallbackQueryHandler(btn_handler))
+    return _ptb_app
+
+
+# ──────────────────────────────────────────────
+#  Async HTTP helper (replaces sync requests)
+# ──────────────────────────────────────────────
+async def backend_get(path: str) -> dict:
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(
+            f"{BACKEND_URL}{path}",
+            headers={"x-admin-secret": ADMIN_SECRET}
         )
         r.raise_for_status()
-        bots = r.json()
-        if not bots:
-            log.warning("⚠️  No active bots found in database.")
-            log.warning("   → Go to Superadmin Dashboard > Bots > Add Bot")
-        return bots
-    except requests.exceptions.ConnectionError:
-        log.error("❌ Cannot connect to backend at %s", BACKEND_URL)
-        log.error("   → Make sure your backend is running: npm run dev")
-        return []
-    except requests.exceptions.HTTPError as e:
-        log.error("❌ Backend rejected request: %s", e)
-        log.error("   → Check ADMIN_SECRET in python_bot/.env matches backend/.env")
-        return []
-    except Exception as e:
-        log.error("❌ Unexpected error fetching tokens: %s", e)
-        return []
+        return r.json()
+
+async def backend_post(path: str, payload: dict) -> dict:
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(
+            f"{BACKEND_URL}{path}",
+            json=payload,
+            headers={"x-admin-secret": ADMIN_SECRET}
+        )
+        r.raise_for_status()
+        return r.json()
 
 
 # ──────────────────────────────────────────────
@@ -67,16 +88,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📊 My Groups",      callback_data="menu_mygroups"),
         ],
         [
-            InlineKeyboardButton("💰 Earnings",  callback_data="menu_earnings"),
+            InlineKeyboardButton("💰 Earnings",    callback_data="menu_earnings"),
             InlineKeyboardButton("🔗 Refer & Earn", callback_data="menu_refer"),
         ],
         [
-            InlineKeyboardButton("📈 Analytics", callback_data="menu_analytics"),
-            InlineKeyboardButton("💸 Withdraw",  callback_data="menu_withdraw"),
+            InlineKeyboardButton("📈 Analytics",   callback_data="menu_analytics"),
+            InlineKeyboardButton("💸 Withdraw",    callback_data="menu_withdraw"),
         ],
         [
-            InlineKeyboardButton("🔗 Link Account",  callback_data="menu_link"),
-            InlineKeyboardButton("🌐 Dashboard", url=FRONT_URL)
+            InlineKeyboardButton("🔗 Link Account", callback_data="menu_link"),
+            InlineKeyboardButton("🌐 Dashboard",    url=FRONT_URL)
         ],
     ]
     text = (
@@ -85,18 +106,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👋 Hello, <b>{user.first_name}</b>!\n\n"
         f"<b>What would you like to do?</b>"
     )
-    
+
     # Handle deep-linking referral
     if context.args:
         ref_code = context.args[0]
         try:
-            requests.post(
-                f"{BACKEND_URL}/groups/bot-referral",
-                json={"telegramId": str(user.id), "referralCode": ref_code},
-                headers={"x-admin-secret": ADMIN_SECRET},
-                timeout=5
-            )
-        except: pass
+            await backend_post("/groups/bot-referral", {
+                "telegramId": str(user.id),
+                "referralCode": ref_code
+            })
+        except Exception:
+            pass
 
     await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -126,21 +146,19 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    # Fetch dynamic setting for min_group_members
     min_members = 100
     is_superadmin = False
     try:
-        def get_data():
-            r_settings = requests.get(f"{BACKEND_URL}/admin/bot-settings", headers={"x-admin-secret": ADMIN_SECRET}, timeout=5)
-            r_user = requests.get(f"{BACKEND_URL}/groups/bot-user-stats/{user.id}", headers={"x-admin-secret": ADMIN_SECRET}, timeout=5)
-            return r_settings.json(), r_user.json() if r_user.status_code == 200 else {}
-        
-        settings, user_data = await asyncio.to_thread(get_data)
-        min_setting = next((s for s in settings if s.get('key') == 'min_group_members'), None)
-        if min_setting: min_members = int(min_setting['value'])
-        if user_data.get('role') == 'superadmin': is_superadmin = True
+        settings = await backend_get("/admin/bot-settings")
+        min_setting = next((s for s in settings if s.get("key") == "min_group_members"), None)
+        if min_setting:
+            min_members = int(min_setting["value"])
+
+        user_data = await backend_get(f"/groups/bot-user-stats/{user.id}")
+        if user_data.get("role") == "superadmin":
+            is_superadmin = True
     except Exception as e:
-        log.warning("Bypass check error: %s", e)
+        log.warning("Settings fetch error: %s", e)
 
     member_count = await chat.get_member_count()
     if member_count < min_members and not is_superadmin:
@@ -157,21 +175,7 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "memberCount": member_count,
             "telegramOwnerId": str(user.id)
         }
-        resp = requests.post(
-            f"{BACKEND_URL}/groups/bot-register",
-            json=payload,
-            headers={"x-admin-secret": ADMIN_SECRET},
-            timeout=10
-        )
-        if resp.status_code == 409:
-            await context.bot.send_message(
-                user.id,
-                "⚠️ <b>This group is already registered!</b>",
-                parse_mode=constants.ParseMode.HTML
-            )
-            return
-        
-        resp.raise_for_status()
+        resp = await backend_post("/groups/bot-register", payload)
         await context.bot.send_message(
             user.id,
             f"✅ <b>Group Registered!</b>\n"
@@ -180,6 +184,15 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>Make sure to use /link email@example.com to see it in your dashboard!</i>",
             parse_mode=constants.ParseMode.HTML
         )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 409:
+            await context.bot.send_message(
+                user.id,
+                "⚠️ <b>This group is already registered!</b>",
+                parse_mode=constants.ParseMode.HTML
+            )
+        else:
+            await update.message.reply_html(f"❌ Registration failed: <code>{e}</code>")
     except Exception as e:
         await update.message.reply_html(f"❌ Registration failed: <code>{e}</code>")
 
@@ -187,18 +200,11 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     try:
-        r = requests.get(
-            f"{BACKEND_URL}/groups/bot-user-stats/{user.id}",
-            headers={"x-admin-secret": ADMIN_SECRET},
-            timeout=5
-        )
-        data = r.json()
+        data = await backend_get(f"/groups/bot-user-stats/{user.id}")
         ref_code = data.get("referralCode", "ERROR")
         bot_info = await context.bot.get_me()
-        bot_username = bot_info.username
-        
-        ref_link = f"https://t.me/{bot_username}?start={ref_code}"
-        
+        ref_link = f"https://t.me/{bot_info.username}?start={ref_code}"
+
         text = (
             f"🔗 <b>Your Referral Program</b>\n"
             f"────────────────────────\n"
@@ -223,22 +229,24 @@ async def btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_refer(update, context)
         return
 
+    if data == "menu_back":
+        await cmd_start(update, context)
+        return
+
     replies = {
         "menu_register": "📡 <b>Register your group</b>\n\nAdd the bot to your group as an Admin, then send <code>/register</code> inside that group.",
         "menu_mygroups": "📊 <b>My Groups</b>\n\nOpen your dashboard to view your registered groups.",
         "menu_earnings": "💰 <b>Earnings</b>\n\nOpen your dashboard to view your earnings breakdown.",
         "menu_analytics": "📈 <b>Analytics</b>\n\nVisit the dashboard for detailed performance metrics.",
         "menu_withdraw": "💸 <b>Withdraw</b>\n\nMinimum withdrawal is ₹1,000. Visit dashboard to submit a request.",
-        "menu_link": f"🔗 <b>Link your account</b>\n\nSend <code>/link your-email@example.com</code> to link your Telegram account.",
+        "menu_link": "🔗 <b>Link your account</b>\n\nSend <code>/link your-email@example.com</code> to link your Telegram account.",
         "menu_refer": "🔗 <b>Refer & Earn</b>\n\nInvite your friends and earn commissions!\n\n• 10% of their ad deposits\n• 5% of their publisher earnings\n\nUse /refer to get your link."
     }
     text = replies.get(data, "⚙️ Coming soon.")
-    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="menu_back"),
-                 InlineKeyboardButton("🌐 Dashboard", url=FRONT_URL)]]
-
-    if data == "menu_back":
-        await cmd_start(update, context)
-        return
+    keyboard = [[
+        InlineKeyboardButton("🔙 Back", callback_data="menu_back"),
+        InlineKeyboardButton("🌐 Dashboard", url=FRONT_URL)
+    ]]
 
     await q.edit_message_text(
         text,
@@ -247,61 +255,53 @@ async def btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         disable_web_page_preview=True
     )
 
+
 async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_html("⚠️ <b>Usage:</b> <code>/link email@example.com</code>")
         return
-    
+
     email = context.args[0]
     user = update.effective_user
     try:
-        def link_account():
-            r = requests.post(
-                f"{BACKEND_URL}/groups/bot-link-account",
-                json={"email": email, "telegramId": str(user.id), "telegramUsername": user.username},
-                headers={"x-admin-secret": ADMIN_SECRET},
-                timeout=10
+        await backend_post("/groups/bot-link-account", {
+            "email": email,
+            "telegramId": str(user.id),
+            "telegramUsername": user.username
+        })
+        await update.message.reply_html(
+            f"✅ <b>Account Linked!</b>\n\n"
+            f"Your Telegram ID is now connected to <b>{email}</b>.\n"
+            f"You can now use /stats and /earnings."
+        )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            await update.message.reply_html(
+                f"❌ <b>Email not found</b>\n\n"
+                f"Could not find <b>{email}</b> in our system. "
+                f"Please check your spelling or register on the dashboard first."
             )
-            r.raise_for_status()
-            return r.json()
-            
-        await asyncio.to_thread(link_account)
-        await update.message.reply_html(f"✅ <b>Account Linked!</b>\n\nYour Telegram ID is now connected to <b>{email}</b>.\nYou can now use /stats and /earnings.")
-    except Exception as e:
-        if hasattr(e, 'response') and e.response is not None and e.response.status_code == 404:
-            await update.message.reply_html(f"❌ <b>Email not found</b>\n\nCould not find <b>{email}</b> in our system. Please check your spelling or register on the dashboard first.")
         else:
             await update.message.reply_html("❌ Could not link account right now. Try again later.")
+    except Exception:
+        await update.message.reply_html("❌ Could not link account right now. Try again later.")
 
-async def fetch_user_stats(telegram_id: str):
-    def get_stats():
-        r = requests.get(
-            f"{BACKEND_URL}/groups/bot-user-stats/{telegram_id}",
-            headers={"x-admin-secret": ADMIN_SECRET},
-            timeout=5
-        )
-        r.raise_for_status()
-        return r.json()
-    return await asyncio.to_thread(get_stats)
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     try:
-        data = await fetch_user_stats(user_id)
-        
-        # Header
+        data = await backend_get(f"/groups/bot-user-stats/{user_id}")
         text = (
             f"📊 <b>Publisher Statistics</b>\n"
             f"👤 Account: <code>{data.get('email')}</code>\n"
             f"──────────────────\n\n"
         )
-        
-        groups = data.get('groups', [])
+        groups = data.get("groups", [])
         if not groups:
             text += "<i>No groups registered yet. Use /register inside your group to start!</i>\n"
         else:
             for g in groups:
-                status_emoji = "✅" if g['status'] == 'approved' else "⏳" if g['status'] == 'pending' else "❌"
+                status_emoji = "✅" if g["status"] == "approved" else "⏳" if g["status"] == "pending" else "❌"
                 text += (
                     f"<b>{status_emoji} {g['name']}</b>\n"
                     f"👥 Members: <code>{g['memberCount']}</code>\n"
@@ -309,25 +309,24 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"👁 Impressions: <code>{g['impressions']}</code>\n"
                     f"──────────────────\n"
                 )
-        
         text += f"\n🔗 <a href='{FRONT_URL}'>Open Web Dashboard</a>"
-        
-    except Exception as e:
-        if hasattr(e, 'response') and e.response is not None and e.response.status_code == 404:
-            text = f"⚠️ <b>Account Not Linked</b>\n\nPlease use <code>/link your-email@example.com</code> first."
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            text = "⚠️ <b>Account Not Linked</b>\n\nPlease use <code>/link your-email@example.com</code> first."
         else:
             text = "❌ Could not fetch stats right now. Try again later."
+    except Exception:
+        text = "❌ Could not fetch stats right now. Try again later."
 
     await update.message.reply_html(text)
+
 
 async def cmd_earnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     try:
-        data = await fetch_user_stats(user_id)
-        wallet = float(data.get('walletBalance', 0))
-        earned = float(data.get('totalEarned', 0))
-        
-        # Header
+        data = await backend_get(f"/groups/bot-user-stats/{user_id}")
+        wallet = float(data.get("walletBalance", 0))
+        earned = float(data.get("totalEarned", 0))
         text = (
             f"💰 <b>Earnings Overview</b>\n"
             f"👤 Account: <code>{data.get('email')}</code>\n"
@@ -336,23 +335,23 @@ async def cmd_earnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💵 <b>Lifetime Earned:</b> ₹{earned:.2f}\n"
             f"──────────────────\n\n"
         )
-        
-        groups = data.get('groups', [])
+        groups = data.get("groups", [])
         if groups:
             text += "<b>Individual Group Revenue:</b>\n"
             for g in groups:
                 text += f"▪️ {g['name']}: ₹{g['revenue']:.2f}\n"
             text += "──────────────────\n"
-        
         text += f"\n🏦 <a href='{FRONT_URL}'>Withdraw Funds on Dashboard</a>"
-        
-    except Exception as e:
-        if hasattr(e, 'response') and e.response is not None and e.response.status_code == 404:
-            text = f"⚠️ <b>Account Not Linked</b>\n\nPlease use <code>/link your-email@example.com</code> first."
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            text = "⚠️ <b>Account Not Linked</b>\n\nPlease use <code>/link your-email@example.com</code> first."
         else:
             text = "❌ Could not fetch earnings right now. Try again later."
+    except Exception:
+        text = "❌ Could not fetch earnings right now. Try again later."
 
     await update.message.reply_html(text)
+
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_html(
@@ -365,81 +364,62 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Need support? Contact our team on the dashboard."
     )
 
-def build_app(token: str) -> Application:
-    app = ApplicationBuilder().token(token).build()
-    app.add_handler(CommandHandler("start",    cmd_start))
-    app.add_handler(CommandHandler("register", cmd_register))
-    app.add_handler(CommandHandler("link",     cmd_link))
-    app.add_handler(CommandHandler("refer",    cmd_refer))
-    app.add_handler(CommandHandler("stats",    cmd_stats))
-    app.add_handler(CommandHandler("earnings", cmd_earnings))
-    app.add_handler(CommandHandler("help",     cmd_help))
-    app.add_handler(CallbackQueryHandler(btn_handler))
-    return app
-
 
 # ──────────────────────────────────────────────
-#  Main — Run all bots concurrently via polling
+#  Vercel Serverless Routes
 # ──────────────────────────────────────────────
-async def main():
-    log.info("🔄 Fetching bot tokens from backend...")
-    bot_configs = fetch_bot_tokens()
 
-    if not bot_configs:
-        log.error("No bots to start. Exiting.")
-        return
+@app.post("/api/bot")
+async def webhook(request: Request):
+    """Main webhook — called by Telegram on every update."""
+    if not BOT_TOKEN:
+        return JSONResponse({"error": "BOT_TOKEN not configured"}, status_code=500)
 
-    apps = []
-    seen_tokens = set()
-
-    for cfg in bot_configs:
-        token = cfg.get("token", "")
-        name  = cfg.get("name",  "Unknown")
-        if not token or token == "YOUR_TELEGRAM_BOT_TOKEN":
-            log.warning("⏭  Skipping %s — placeholder token", name)
-            continue
-        if token in seen_tokens:
-            continue
-        seen_tokens.add(token)
-
-        log.info("🤖 Starting bot: %s (%s...)", name, token[:10])
-        application = build_app(token)
-        apps.append(application)
-
-    if not apps:
-        log.error("No valid bots to start. Check your tokens in Superadmin Dashboard.")
-        return
-
-    # Start all bots
-    for application in apps:
-        try:
-            await application.initialize()
-            await application.start()
-            await application.updater.start_polling(drop_pending_updates=True)
-            log.info("✅ Polling active — Send /start to your bot now!")
-        except Exception as e:
-            if "Conflict" in str(e):
-                log.error("❌ CONFLICT ERROR: Another script or terminal is ALREADY running this bot!")
-                log.error("👉 Please CLOSE any other terminal windows running bot.py and try again.")
-            else:
-                log.error("❌ Failed to start polling: %s", getattr(e, "message", str(e)))
-
-    # Wait forever
     try:
-        await asyncio.Event().wait()
-    except (KeyboardInterrupt, SystemExit):
-        pass
-    finally:
-        for application in apps:
-            try:
-                if application.updater and application.updater.running:
-                    await application.updater.stop()
-                if application.running:
-                    await application.stop()
-                await application.shutdown()
-            except Exception:
-                pass
+        body = await request.json()
+    except Exception:
+        return Response(status_code=400)
+
+    ptb = get_ptb_app()
+
+    # Initialize once if not yet done
+    if not ptb.running:
+        await ptb.initialize()
+
+    update = Update.de_json(body, ptb.bot)
+    await ptb.process_update(update)
+
+    return Response(status_code=200)
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+@app.get("/api/bot")
+async def health():
+    """Health check endpoint."""
+    return JSONResponse({"status": "ok", "bot": "TeleAds Pro"})
+
+
+@app.get("/setup")
+async def setup_webhook(request: Request):
+    """
+    Visit this URL once after deployment to register the webhook with Telegram.
+    e.g. https://your-bot.vercel.app/setup
+    """
+    if not BOT_TOKEN:
+        return JSONResponse({"error": "BOT_TOKEN not configured"}, status_code=500)
+
+    # Determine the public URL automatically
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    scheme = request.headers.get("x-forwarded-proto", "https")
+    webhook_url = f"{scheme}://{host}/api/bot"
+
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+            json={"url": webhook_url, "drop_pending_updates": True}
+        )
+        data = r.json()
+
+    if data.get("ok"):
+        return JSONResponse({"status": "✅ Webhook registered", "url": webhook_url})
+    else:
+        return JSONResponse({"status": "❌ Failed", "detail": data}, status_code=500)
